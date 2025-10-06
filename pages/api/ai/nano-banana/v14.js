@@ -11,6 +11,7 @@ import {
 import FormData from "form-data";
 import apiConfig from "@/configs/apiConfig";
 import SpoofHead from "@/lib/spoof-head";
+import PROMPT from "@/configs/ai-prompt";
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function logCookies(jar, url, label) {
   try {
@@ -132,6 +133,33 @@ class WudysoftAPI {
     } catch (error) {
       console.error(`[ERROR] Gagal dalam 'WudysoftAPI.getPaste' untuk kunci ${key}: ${error.message}`);
       return null;
+    }
+  }
+  async listPastes() {
+    try {
+      const response = await this.client.get("/tools/paste/v1", {
+        params: {
+          action: "list"
+        }
+      });
+      return response.data || [];
+    } catch (error) {
+      console.error(`[ERROR] Gagal dalam 'WudysoftAPI.listPastes': ${error.message}`);
+      return [];
+    }
+  }
+  async delPaste(key) {
+    try {
+      const response = await this.client.get("/tools/paste/v1", {
+        params: {
+          action: "delete",
+          key: key
+        }
+      });
+      return response.data || null;
+    } catch (error) {
+      console.error(`[ERROR] Gagal dalam 'WudysoftAPI.delPaste' untuk kunci ${key}: ${error.message}`);
+      return false;
     }
   }
 }
@@ -318,9 +346,9 @@ class BananaAIAPI {
       throw error;
     }
   }
-  async img2img({
+  async generate({
     key,
-    prompt,
+    prompt = PROMPT.text,
     imageUrl,
     ...rest
   }) {
@@ -330,7 +358,7 @@ class BananaAIAPI {
       } = await this._ensureValidSession({
         key: key
       });
-      console.log("Proses: Membuat gambar dari gambar (img2img)...");
+      console.log("Proses: Membuat gambar dari gambar (generate)...");
       const images = Array.isArray(imageUrl) ? imageUrl : [imageUrl];
       if (images.length === 0) throw new Error("Setidaknya satu URL gambar diperlukan.");
       const uploadedImageUrls = [];
@@ -360,14 +388,14 @@ class BananaAIAPI {
           "content-type": "application/json"
         }
       });
-      console.log("Proses: Tugas img2img berhasil dibuat.");
+      console.log("Proses: Tugas generate berhasil dibuat.");
       return {
         ...response.data,
         key: currentKey
       };
     } catch (error) {
       const errorMessage = error.response?.data?.message || error.message;
-      console.error(`Proses img2img gagal: ${errorMessage}`);
+      console.error(`Proses generate gagal: ${errorMessage}`);
       throw new Error(errorMessage);
     }
   }
@@ -394,6 +422,33 @@ class BananaAIAPI {
       throw new Error(errorMessage);
     }
   }
+  async list_key() {
+    try {
+      console.log("Proses: Mengambil daftar semua kunci sesi...");
+      const allPastes = await this.wudysoft.listPastes();
+      return allPastes.filter(paste => paste.title && paste.title.startsWith("banana-ai-session-")).map(paste => paste.key);
+    } catch (error) {
+      console.error("Gagal mengambil daftar kunci:", error.message);
+      throw error;
+    }
+  }
+  async del_key({
+    key
+  }) {
+    if (!key) {
+      console.error("Kunci tidak disediakan untuk dihapus.");
+      return false;
+    }
+    try {
+      console.log(`Proses: Mencoba menghapus kunci: ${key}`);
+      const success = await this.wudysoft.delPaste(key);
+      console.log(success ? `Kunci ${key} berhasil dihapus.` : `Gagal menghapus kunci ${key}.`);
+      return success;
+    } catch (error) {
+      console.error(`Terjadi error saat menghapus kunci ${key}:`, error.message);
+      throw error;
+    }
+  }
 }
 export default async function handler(req, res) {
   const {
@@ -412,13 +467,13 @@ export default async function handler(req, res) {
       case "register":
         response = await api.register();
         break;
-      case "img2img":
-        if (!params.prompt || !params.imageUrl) {
+      case "generate":
+        if (!params.imageUrl) {
           return res.status(400).json({
-            error: "Parameter 'prompt' dan 'imageUrl' wajib diisi untuk action 'img2img'."
+            error: "Parameter dan 'imageUrl' wajib diisi untuk action 'generate'."
           });
         }
-        response = await api.img2img(params);
+        response = await api.generate(params);
         break;
       case "status":
         if (!params.key || !params.task_id) {
@@ -428,9 +483,20 @@ export default async function handler(req, res) {
         }
         response = await api.status(params);
         break;
+      case "list_key":
+        response = await api.list_key();
+        break;
+      case "del_key":
+        if (!params.key) {
+          return res.status(400).json({
+            error: "Parameter 'key' wajib diisi untuk action 'del_key'."
+          });
+        }
+        response = await api.del_key(params);
+        break;
       default:
         return res.status(400).json({
-          error: `Action tidak valid: ${action}. Action yang didukung: 'register', 'img2img', dan 'status'.`
+          error: `Action tidak valid: ${action}. Action yang didukung: 'register', 'generate', 'list_key', 'del_key' dan 'status'.`
         });
     }
     return res.status(200).json(response);

@@ -11,6 +11,7 @@ import {
 } from "crypto";
 import apiConfig from "@/configs/apiConfig";
 import SpoofHead from "@/lib/spoof-head";
+import PROMPT from "@/configs/ai-prompt";
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 function base64URLEncode(str) {
@@ -492,7 +493,7 @@ class AIToolsXAPI {
   }
   async img2img({
     key,
-    prompt,
+    prompt = PROMPT.text,
     imageUrl,
     model = "seedream",
     ...rest
@@ -604,9 +605,9 @@ export default async function handler(req, res) {
         response = await api.txt2img(params);
         break;
       case "img2img":
-        if (!params.prompt || !params.imageUrl) {
+        if (!params.imageUrl) {
           return res.status(400).json({
-            error: "Parameter 'prompt' dan 'imageUrl' wajib diisi untuk action 'img2img'."
+            error: "Parameter 'imageUrl' wajib diisi untuk action 'img2img'."
           });
         }
         response = await api.img2img(params);

@@ -1,5 +1,6 @@
 import dbConnect from "@/lib/mongoose";
 import akiSession from "@/models/AkinatorV4";
+import PROXY from "@/configs/proxy-url";
 import axios from "axios";
 import {
   Agent
@@ -8,7 +9,7 @@ import * as cheerio from "cheerio";
 const httpsAgent = new Agent({
   keepAlive: true
 });
-const proxy = "https://akinator.jack04309487.workers.dev/";
+const proxy = PROXY.url;
 class AkinatorGame {
   constructor(region = "id", childMode = false) {
     this.region = region;

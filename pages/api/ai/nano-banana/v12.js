@@ -1,8 +1,9 @@
 import axios from "axios";
 import FormData from "form-data";
+import PROXY from "@/configs/proxy-url";
 class BananaAIClient {
   constructor(options = {}) {
-    const defaultProxies = ["https://akinator.jack04309487.workers.dev", "https://cors.caliph.my.id"];
+    const defaultProxies = [PROXY.url];
     this.proxies = options.proxies || defaultProxies;
     this.targetUrl = "https://bananaai.live";
     this.api = axios.create({

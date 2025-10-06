@@ -1,5 +1,6 @@
 import dbConnect from "@/lib/mongoose";
 import akiSession from "@/models/Akinator";
+import PROXY from "@/configs/proxy-url";
 import axios from "axios";
 import {
   Agent
@@ -52,7 +53,7 @@ class Akinator {
   constructor(region = "id") {
     console.log("Akinator class initialized.");
     this.region = region;
-    const proxyBaseURL = `https://akinator.jack04309487.workers.dev/https://${this.region}.akinator.com`;
+    const proxyBaseURL = `${PROXY.url}https://${this.region}.akinator.com`;
     this.proxyClient = axios.create({
       baseURL: proxyBaseURL,
       httpsAgent: httpsAgent,

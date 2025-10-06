@@ -144,6 +144,33 @@ class WudysoftAPI {
       return null;
     }
   }
+  async listPastes() {
+    try {
+      const response = await this.client.get("/tools/paste/v1", {
+        params: {
+          action: "list"
+        }
+      });
+      return response.data || [];
+    } catch (error) {
+      console.error(`[ERROR] Gagal dalam 'WudysoftAPI.listPastes': ${error.message}`);
+      return [];
+    }
+  }
+  async delPaste(key) {
+    try {
+      const response = await this.client.get("/tools/paste/v1", {
+        params: {
+          action: "delete",
+          key: key
+        }
+      });
+      return response.data || null;
+    } catch (error) {
+      console.error(`[ERROR] Gagal dalam 'WudysoftAPI.delPaste' untuk kunci ${key}: ${error.message}`);
+      return false;
+    }
+  }
 }
 class ZeroeditAPI {
   constructor() {
@@ -434,6 +461,33 @@ class ZeroeditAPI {
       throw new Error(errorMessage);
     }
   }
+  async list_key() {
+    try {
+      console.log("Proses: Mengambil daftar semua kunci sesi...");
+      const allPastes = await this.wudysoft.listPastes();
+      return allPastes.filter(paste => paste.title && paste.title.startsWith("zeroedit-session-")).map(paste => paste.key);
+    } catch (error) {
+      console.error("Gagal mengambil daftar kunci:", error.message);
+      throw error;
+    }
+  }
+  async del_key({
+    key
+  }) {
+    if (!key) {
+      console.error("Kunci tidak disediakan untuk dihapus.");
+      return false;
+    }
+    try {
+      console.log(`Proses: Mencoba menghapus kunci: ${key}`);
+      const success = await this.wudysoft.delPaste(key);
+      console.log(success ? `Kunci ${key} berhasil dihapus.` : `Gagal menghapus kunci ${key}.`);
+      return success;
+    } catch (error) {
+      console.error(`Terjadi error saat menghapus kunci ${key}:`, error.message);
+      throw error;
+    }
+  }
 }
 export default async function handler(req, res) {
   const {
@@ -453,9 +507,9 @@ export default async function handler(req, res) {
         response = await api.register();
         break;
       case "generate":
-        if (!params.prompt || !params.imageUrl) {
+        if (!params.imageUrl) {
           return res.status(400).json({
-            error: "Parameter 'prompt' dan 'imageUrl' wajib diisi untuk action 'generate'."
+            error: "Parameter 'imageUrl' wajib diisi untuk action 'generate'."
           });
         }
         response = await api.generate(params);
@@ -468,9 +522,20 @@ export default async function handler(req, res) {
         }
         response = await api.credit(params);
         break;
+      case "list_key":
+        response = await api.list_key();
+        break;
+      case "del_key":
+        if (!params.key) {
+          return res.status(400).json({
+            error: "Parameter 'key' wajib diisi untuk action 'del_key'."
+          });
+        }
+        response = await api.del_key(params);
+        break;
       default:
         return res.status(400).json({
-          error: `Action tidak valid: ${action}. Action yang didukung: 'register', 'generate', 'credit'.`
+          error: `Action tidak valid: ${action}. Action yang didukung: 'register', 'generate', 'credit', 'list_key', 'del_key'.`
         });
     }
     return res.status(200).json(response);

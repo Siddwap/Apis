@@ -24,7 +24,12 @@ class AxiosClient {
       20: "https://proxy.cskh-zm.workers.dev/?url=",
       21: "https://proxy.tgb6jphrx7.workers.dev/?url=",
       22: "https://proxy.manhict.workers.dev/?url=",
-      23: "https://bypass.manhgdev.workers.dev/?url="
+      23: "https://bypass.manhgdev.workers.dev/?url=",
+      24: "https://cors.vaportrade.net/",
+      25: "https://cors.luckydesigner.workers.dev/?",
+      26: "https://cors.eu.org/",
+      27: "https://cors.niceeli.workers.dev/?",
+      28: "https://cors.bbear.workers.dev/?"
     };
   }
   addHost(key, url) {
