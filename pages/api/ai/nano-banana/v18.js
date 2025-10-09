@@ -1,7 +1,9 @@
 import axios from "axios";
 import FormData from "form-data";
 import https from "https";
+import apiConfig from "@/configs/apiConfig";
 import SpoofHead from "@/lib/spoof-head";
+import PROMPT from "@/configs/ai-prompt";
 class BananaAIClient {
   constructor() {
     this.apiBaseUrl = "https://nanobanana-free.site/api";
@@ -93,31 +95,30 @@ class BananaAIClient {
   }
   async _presign(buffer) {
     try {
-      console.log("Proses: Mengunggah gambar untuk mendapatkan presigned URL...");
+      console.log("Proses: Mengunggah gambar untuk mendapatkan URL...");
       const formData = new FormData();
       formData.append("file", buffer, {
-        filename: "background-replacer-result.png",
+        filename: "image.png",
         contentType: "image/png"
       });
-      formData.append("optimize", "true");
       const baseHeaders = this.buildHeaders(true);
       const formHeaders = formData.getHeaders();
-      const response = await axios.post(`${this.apiBaseUrl}/upload-image`, formData, {
+      const response = await axios.post(`https://${apiConfig.DOMAIN_URL}/api/tools/upload`, formData, {
         headers: {
           ...baseHeaders,
           ...formHeaders
         },
         httpsAgent: this.httpsAgent
       });
-      console.log("Proses: Berhasil mendapatkan presigned URL.");
-      return response?.data?.url || null;
+      console.log("Proses: Berhasil mengunggah gambar.");
+      return response?.data;
     } catch (error) {
-      console.error("Error saat upload presign:", error.response?.data || error.message);
-      throw new Error("Gagal mengunggah gambar untuk presign.");
+      console.error("Error saat mengunggah gambar:", error.response?.data || error.message);
+      throw new Error("Gagal mengunggah gambar.");
     }
   }
   async generate({
-    prompt = "a beautiful landscape",
+    prompt = PROMPT.text,
     imageUrl,
     ...rest
   }) {
@@ -128,8 +129,9 @@ class BananaAIClient {
       if (imageUrl) {
         console.log("Proses: Mode Image-to-Image terdeteksi.");
         const imageBuffer = await this._getBuffer(imageUrl);
-        finalImageUrl = await this._presign(imageBuffer);
-        if (!finalImageUrl) throw new Error("Gagal mendapatkan presigned URL.");
+        const presignResponse = await this._presign(imageBuffer);
+        finalImageUrl = presignResponse?.result;
+        if (!finalImageUrl) throw new Error("Gagal mendapatkan URL gambar dari respons presign.");
       } else {
         console.log("Proses: Mode Text-to-Image terdeteksi.");
       }

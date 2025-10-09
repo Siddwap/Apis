@@ -2,6 +2,7 @@ import axios from "axios";
 import {
   FormData
 } from "formdata-node";
+import SpoofHead from "@/lib/spoof-head";
 class RecapioGPT {
   constructor(apiKey = "") {
     this.apiKey = apiKey;
@@ -14,7 +15,7 @@ class RecapioGPT {
   getRandomDeviceFingerprint() {
     return Math.random().toString(36).substring(2, 18);
   }
-  async summary({
+  async generate({
     url,
     length = "medium-3-paragraphs",
     tone = "creative",
@@ -50,7 +51,8 @@ class RecapioGPT {
           "x-device-fingerprint": this.getRandomDeviceFingerprint(),
           "sec-ch-ua": '"Chromium";v="131", "Not_A Brand";v="24", "Microsoft Edge Simulate";v="131", "Lemur";v="131"',
           "sec-ch-ua-mobile": "?1",
-          "sec-ch-ua-platform": '"Android"'
+          "sec-ch-ua-platform": '"Android"',
+          ...SpoofHead()
         }
       });
       return response.data;
@@ -65,16 +67,16 @@ export default async function handler(req, res) {
   const params = req.method === "GET" ? req.query : req.body;
   if (!params.url) {
     return res.status(400).json({
-      error: "Url is required"
+      error: "Url are required"
     });
   }
-  const recapio = new RecapioGPT();
   try {
-    const data = await recapio.summary(params);
-    return res.status(200).json(data);
+    const client = new RecapioGPT();
+    const response = await client.generate(params);
+    return res.status(200).json(response);
   } catch (error) {
     res.status(500).json({
-      error: "Internal Server Error"
+      error: error.message || "Internal Server Error"
     });
   }
 }
