@@ -1,23 +1,69 @@
 import canvafy from "canvafy";
-export default async function handler(req, res) {
-  const {
-    background = "https://png.pngtree.com/thumb_back/fw800/background/20240911/pngtree-surreal-moonlit-panorama-pc-wallpaper-image_16148136.jpg",
-      borderColor = "f0f0f0",
-      overlayOpacity = .7,
-      keyLength = 15
-  } = req.method === "GET" ? req.query : req.body;
-  if (!background) {
-    return res.status(400).json({
-      error: "Missing background URL"
-    });
+class CaptchaGenerator {
+  constructor() {
+    this.defaultConfig = {
+      background: "https://png.pngtree.com/thumb_back/fw800/background/20240911/pngtree-surreal-moonlit-panorama-pc-wallpaper-image_16148136.jpg",
+      borderColor: "f0f0f0",
+      overlayOpacity: .7,
+      keyLength: 15
+    };
   }
+  validateInputs({
+    background,
+    borderColor,
+    overlayOpacity,
+    keyLength
+  }) {
+    if (!background || typeof background !== "string") {
+      throw new Error("Invalid or missing background URL");
+    }
+    if (!/^([0-9A-Fa-f]{6})$/.test(borderColor)) {
+      throw new Error("Invalid border color format. Must be a 6-digit hexadecimal color code");
+    }
+    const opacity = Number(overlayOpacity);
+    if (isNaN(opacity) || opacity < 0 || opacity > 1) {
+      throw new Error("Overlay opacity must be a number between 0 and 1");
+    }
+    const length = Number(keyLength);
+    if (isNaN(length) || length < 6 || length > 20) {
+      throw new Error("Key length must be a number between 6 and 20");
+    }
+    return {
+      background: background,
+      borderColor: borderColor,
+      overlayOpacity: opacity,
+      keyLength: length
+    };
+  }
+  async generateCaptcha({
+    background,
+    borderColor,
+    overlayOpacity,
+    keyLength
+  }) {
+    try {
+      const captchaImage = await new canvafy.Captcha().setBackground("image", background).setCaptchaKey(canvafy.Util.captchaKey(keyLength)).setBorder(`#${borderColor}`).setOverlayOpacity(overlayOpacity).build();
+      return captchaImage;
+    } catch (error) {
+      throw new Error(`Failed to generate captcha image: ${error.message}`);
+    }
+  }
+}
+export default async function handler(req, res) {
+  const captchaGenerator = new CaptchaGenerator();
   try {
-    const captchaImage = await new canvafy.Captcha().setBackground("image", background).setCaptchaKey(canvafy.Util.captchaKey(Number(keyLength))).setBorder("#" + borderColor).setOverlayOpacity(Number(overlayOpacity)).build();
+    const params = req.method === "GET" ? req.query : req.body;
+    const config = {
+      ...captchaGenerator.defaultConfig,
+      ...params
+    };
+    const validatedConfig = captchaGenerator.validateInputs(config);
+    const captchaImage = await captchaGenerator.generateCaptcha(validatedConfig);
     res.setHeader("Content-Type", "image/png");
     return res.status(200).send(captchaImage);
   } catch (error) {
-    res.status(500).json({
-      error: "Failed to generate captcha image"
+    return res.status(400).json({
+      error: error.message
     });
   }
 }

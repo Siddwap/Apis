@@ -3,67 +3,82 @@ import {
   CookieJar
 } from "tough-cookie";
 import {
-  wrapper
+  wrapper as axiosCookieJarSupport
 } from "axios-cookiejar-support";
+import * as cheerio from "cheerio";
 import SpoofHead from "@/lib/spoof-head";
-class PictifyConverter {
+class HtmlToImageGenerator {
   constructor() {
-    this.cookieJar = new CookieJar();
-    this.client = wrapper(axios.create({
-      jar: this.cookieJar
-    }));
-    this.apiUrl = "https://api.pictify.io/image/public";
-    this.headers = {
-      accept: "*/*",
-      "accept-language": "id-ID",
-      "content-type": "application/json",
-      origin: "https://pictify.io",
-      priority: "u=1, i",
-      referer: "https://pictify.io/",
-      "sec-ch-ua": '"Chromium";v="127", "Not)A;Brand";v="99", "Microsoft Edge Simulate";v="127", "Lemur";v="127"',
-      "sec-ch-ua-mobile": "?1",
-      "sec-ch-ua-platform": '"Android"',
-      "sec-fetch-dest": "empty",
-      "sec-fetch-mode": "cors",
-      "sec-fetch-site": "same-site",
-      "user-agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Mobile Safari/537.36",
-      ...SpoofHead()
-    };
+    console.log("Proses: Inisialisasi HttpToImageConverter");
+    const cookieJar = new CookieJar();
+    this.axiosInstance = axios.create({
+      jar: cookieJar,
+      withCredentials: true
+    });
+    axiosCookieJarSupport(this.axiosInstance);
   }
-  async convertHtmlToImageUrl({
+  async gT() {
+    try {
+      console.log("Proses: Mengambil token CSRF");
+      const response = await this.axiosInstance.get("https://htmlcsstoimage.com/");
+      const $ = cheerio.load(response.data);
+      const token = $('input[name="__RequestVerificationToken"]').val();
+      console.log(token ? "Proses: Token ditemukan" : "Proses: Gagal menemukan token");
+      return token || null;
+    } catch (error) {
+      console.error("Error saat mengambil token:", error.message);
+      return null;
+    }
+  }
+  async convertHTMLToImage({
     html,
     width = 1280,
     height = 1280,
-    fileExtension = "png"
+    ...rest
   }) {
-    const payload = {
-      html: html,
-      width: width,
-      height: height,
-      fileExtension: fileExtension
-    };
+    console.log("Proses: Memulai konversi HTML ke gambar");
     try {
-      console.log("Mengirim permintaan ke Pictify API...");
-      const response = await this.client.post(this.apiUrl, payload, {
-        headers: this.headers
+      const token = await this.gT();
+      if (!token) {
+        throw new Error("Tidak bisa melanjutkan tanpa token CSRF");
+      }
+      const defaultPayload = {
+        full_screen: true,
+        render_when_ready: false,
+        color_scheme: "light",
+        timezone: "UTC",
+        block_consent_banners: false
+      };
+      const payload = {
+        ...defaultPayload,
+        html: html,
+        viewport_width: width,
+        viewport_height: height,
+        ...rest,
+        __RequestVerificationToken: token
+      };
+      const headers = {
+        accept: "*/*",
+        "content-type": "application/json",
+        origin: "https://htmlcsstoimage.com",
+        referer: "https://htmlcsstoimage.com/",
+        requestverificationtoken: token,
+        "user-agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Mobile Safari/537.36",
+        ...SpoofHead()
+      };
+      console.log("Proses: Mengirim permintaan POST dengan payload final:", payload);
+      const response = await this.axiosInstance.post("https://htmlcsstoimage.com/image-demo", payload, {
+        headers: headers
       });
-      const imageUrl = response.data?.image?.url;
-      if (response.status === 200 && imageUrl) {
-        console.log("URL gambar berhasil didapatkan!");
-        return imageUrl;
-      } else {
-        throw new Error(`Gagal mendapatkan URL gambar. Respons tidak valid atau URL tidak ditemukan. Status: ${response.status}`);
-      }
+      const imageUrl = response?.data?.url;
+      console.log("Proses: Berhasil mendapatkan URL gambar");
+      return imageUrl ? imageUrl : "URL tidak ditemukan";
     } catch (error) {
-      if (error.response) {
-        console.error(`Error dari server Pictify (Status: ${error.response.status}):`, error.response.data);
-        throw new Error(`Error dari server Pictify: ${JSON.stringify(error.response.data)}`);
-      } else if (error.request) {
-        console.error("Terjadi kesalahan: Tidak ada respons dari server Pictify.");
-        throw new Error("Tidak ada respons dari server Pictify.");
-      } else {
-        throw error;
-      }
+      console.error("Error saat konversi HTML:", error.message);
+      const errorMessage = error?.response?.data?.title || error?.response?.data || "Terjadi kesalahan tidak diketahui";
+      return {
+        error: errorMessage
+      };
     }
   }
 }
@@ -75,8 +90,8 @@ export default async function handler(req, res) {
         error: "Missing 'html' parameter"
       });
     }
-    const pictify = new PictifyConverter();
-    const result = await pictify.convertHtmlToImageUrl(params);
+    const converter = new HtmlToImageGenerator();
+    const result = await converter.convertHTMLToImage(params);
     return res.status(200).json({
       url: result
     });
