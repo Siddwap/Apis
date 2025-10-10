@@ -2,7 +2,7 @@ import apiConfig from "@/configs/apiConfig";
 import axios from "axios";
 import * as cheerio from "cheerio";
 import https from "https";
-class Scraper {
+class GroupScraper {
   constructor() {
     this.baseUrl = `https://${apiConfig.DOMAIN_URL}/api/tools/web/html/v6?url=`;
     this.groupioUrl = "https://en.groupio.app";
@@ -24,7 +24,10 @@ class Scraper {
       return null;
     }
   }
-  async search(query = "meme", limit = 5) {
+  async search({
+    query = "meme",
+    limit = 5
+  }) {
     const $ = await this.fetchPage(`${this.baseUrl}${this.groupioUrl}/groups/tag/${encodeURIComponent(query)}`);
     if (!$) return [];
     const results = $(".groups-items-list .group-item").map((_, el) => ({
@@ -80,37 +83,16 @@ class Scraper {
   }
 }
 export default async function handler(req, res) {
-  const {
-    action,
-    query,
-    url,
-    limit = 5
-  } = req.method === "GET" ? req.query : req.body;
-  if (!action) return res.status(400).json({
-    error: "Action is required"
-  });
+  const params = req.method === "GET" ? req.query : req.body;
+  if (!params.query) {
+    return res.status(400).json({
+      error: "Query are required"
+    });
+  }
   try {
-    const search = new Scraper();
-    let result;
-    switch (action) {
-      case "search":
-        if (!query) return res.status(400).json({
-          error: "Query is required for search"
-        });
-        result = await search.search(query, limit);
-        break;
-      case "info":
-        if (!url) return res.status(400).json({
-          error: "URL is required for info"
-        });
-        result = await search.info(url);
-        break;
-      default:
-        return res.status(400).json({
-          error: `Invalid action: ${action}`
-        });
-    }
-    return res.status(200).json(result);
+    const api = new GroupScraper();
+    const response = await api.search(params);
+    return res.status(200).json(response);
   } catch (error) {
     res.status(500).json({
       error: error.message || "Internal Server Error"

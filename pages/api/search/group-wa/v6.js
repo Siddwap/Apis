@@ -6,7 +6,7 @@ import {
   CookieJar
 } from "tough-cookie";
 import * as cheerio from "cheerio";
-class Scraper {
+class GroupScraper {
   constructor() {
     this.jar = new CookieJar();
     this.client = wrapper(axios.create({
@@ -22,7 +22,11 @@ class Scraper {
       "x-requested-with": "XMLHttpRequest"
     };
   }
-  async search(query, result_limit = 5, group_limit = 5) {
+  async search({
+    query,
+    result_limit = 5,
+    group_limit = 5
+  }) {
     const url = `https://whatsgrouplink.com/?s=${encodeURIComponent(query)}`;
     try {
       const response = await this.client.get(url, {
@@ -97,20 +101,16 @@ class Scraper {
   }
 }
 export default async function handler(req, res) {
-  const {
-    query,
-    result_limit = 5,
-    group_limit = 5
-  } = req.method === "GET" ? req.query : req.body;
-  if (!query) {
+  const params = req.method === "GET" ? req.query : req.body;
+  if (!params.query) {
     return res.status(400).json({
-      error: "Query is required"
+      error: "Query are required"
     });
   }
   try {
-    const search = new Scraper();
-    const result = await search.search(query, parseInt(result_limit), parseInt(group_limit));
-    return res.status(200).json(result);
+    const api = new GroupScraper();
+    const response = await api.search(params);
+    return res.status(200).json(response);
   } catch (error) {
     res.status(500).json({
       error: error.message || "Internal Server Error"

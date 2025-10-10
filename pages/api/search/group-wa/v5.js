@@ -6,7 +6,7 @@ import {
   CookieJar
 } from "tough-cookie";
 import * as cheerio from "cheerio";
-class Scraper {
+class GroupScraper {
   constructor() {
     this.jar = new CookieJar();
     this.client = wrapper(axios.create({
@@ -22,7 +22,10 @@ class Scraper {
       "x-requested-with": "XMLHttpRequest"
     };
   }
-  async search(query, limit = 5) {
+  async search({
+    query,
+    limit = 5
+  }) {
     const url = `https://whtsgrouplink.org/?s=${encodeURIComponent(query)}`;
     try {
       const response = await this.client.get(url, {
@@ -90,37 +93,16 @@ class Scraper {
   }
 }
 export default async function handler(req, res) {
-  const {
-    action,
-    query,
-    url,
-    limit = 5
-  } = req.method === "GET" ? req.query : req.body;
-  if (!action) return res.status(400).json({
-    error: "Action is required"
-  });
+  const params = req.method === "GET" ? req.query : req.body;
+  if (!params.query) {
+    return res.status(400).json({
+      error: "Query are required"
+    });
+  }
   try {
-    const search = new Scraper();
-    let result;
-    switch (action) {
-      case "search":
-        if (!query) return res.status(400).json({
-          error: "Query is required for search"
-        });
-        result = await search.search(query, limit);
-        break;
-      case "info":
-        if (!url) return res.status(400).json({
-          error: "URL is required for info"
-        });
-        result = await search.info(url);
-        break;
-      default:
-        return res.status(400).json({
-          error: `Invalid action: ${action}`
-        });
-    }
-    return res.status(200).json(result);
+    const api = new GroupScraper();
+    const response = await api.search(params);
+    return res.status(200).json(response);
   } catch (error) {
     res.status(500).json({
       error: error.message || "Internal Server Error"
