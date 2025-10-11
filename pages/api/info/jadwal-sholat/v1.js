@@ -1,4 +1,6 @@
 import axios from "axios";
+import PROXY from "@/configs/proxy-url";
+const proxy = PROXY.url;
 class GlobalPrayerTime {
   constructor() {
     this.headers = {
@@ -10,6 +12,10 @@ class GlobalPrayerTime {
       headers: this.headers
     });
     this.cityCache = new Map();
+  }
+  toSnakeCase(str) {
+    if (!str) return "";
+    return str.toLowerCase().replace(/[-\s]+/g, "_").replace(/[^a-z0-9_]/g, "");
   }
   formatDate() {
     const now = new Date();
@@ -32,13 +38,18 @@ class GlobalPrayerTime {
   }
   async getCityCoordinates(city, country = "") {
     try {
-      const cacheKey = `${city.toLowerCase()}_${country.toLowerCase()}`;
+      const normalizedCity = this.toSnakeCase(city);
+      const normalizedCountry = this.toSnakeCase(country);
+      const cacheKey = `${normalizedCity}_${normalizedCountry}`;
+      console.log(`📍 Mencari koordinat: ${city}${country ? ", " + country : ""} (normalized: ${normalizedCity}_${normalizedCountry})`);
       if (this.cityCache.has(cacheKey)) {
         return this.cityCache.get(cacheKey);
       }
-      const response = await this.axiosInstance.get(`https://nominatim.openstreetmap.org/search`, {
+      const baseUrl = "https://nominatim.openstreetmap.org/search";
+      const proxiedUrl = `${proxy}${encodeURIComponent(baseUrl)}`;
+      const response = await this.axiosInstance.get(proxiedUrl, {
         params: {
-          q: `${city} ${country}`,
+          q: `${normalizedCity} ${normalizedCountry}`,
           format: "json",
           limit: 1
         }
@@ -181,12 +192,13 @@ class GlobalPrayerTime {
     return methods[method] || "Standard";
   }
   getCalculationMethod(country) {
+    const normalizedCountry = this.toSnakeCase(country);
     const countryMethods = {
       indonesia: 1,
       malaysia: 1,
       singapore: 10,
       brunei: 1,
-      "saudi arabia": 4,
+      saudi_arabia: 4,
       egypt: 5,
       turkey: 12,
       iran: 6,
@@ -200,7 +212,7 @@ class GlobalPrayerTime {
       germany: 2,
       russia: 13
     };
-    return countryMethods[country.toLowerCase()] || 1;
+    return countryMethods[normalizedCountry] || 1;
   }
   getNextPrayer(prayerTimes) {
     const now = new Date();
@@ -251,7 +263,9 @@ class GlobalPrayerTime {
   }
   async getPrayerSchedule(city, country = "") {
     try {
-      console.log(`📍 Mencari koordinat: ${city}${country ? ", " + country : ""}`);
+      const normalizedCity = this.toSnakeCase(city);
+      const normalizedCountry = this.toSnakeCase(country);
+      console.log(`📍 Mencari koordinat: ${city}${country ? ", " + country : ""} (normalized: ${normalizedCity}${normalizedCountry ? ", " + normalizedCountry : ""})`);
       const coordinates = await this.getCityCoordinates(city, country);
       const method = this.getCalculationMethod(country || "indonesia");
       console.log(`🕌 Mendapatkan jadwal sholat...`);
@@ -297,19 +311,21 @@ class PrayerTime {
     country = ""
   }) {
     try {
+      const normalizedCity = this.prayerTime.toSnakeCase(city);
+      console.log(`🔍 Pencarian jadwal sholat: ${city}${country ? ", " + country : ""} (normalized city: ${normalizedCity})`);
       if (!city || typeof city !== "string") {
-        return JSON.stringify({
+        return {
           success: false,
           error: "Nama kota tidak valid"
-        }, null, 2);
+        };
       }
       const result = await this.prayerTime.getPrayerSchedule(city, country);
       return result;
     } catch (error) {
-      return JSON.stringify({
+      return {
         success: false,
         error: error.message
-      }, null, 2);
+      };
     }
   }
 }

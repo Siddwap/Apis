@@ -22,6 +22,10 @@ class KemenagPrayer {
       "sec-ch-ua-platform": '"Android"'
     };
   }
+  toSnakeCase(str) {
+    if (!str) return "";
+    return str.toLowerCase().replace(/[-\s]+/g, "_").replace(/[^a-z0-9_]/g, "");
+  }
   async search({
     prov,
     kab,
@@ -29,7 +33,9 @@ class KemenagPrayer {
     year = new Date().getFullYear(),
     ...rest
   }) {
-    console.log(`[Search] Province: ${prov || "all"}, City: ${kab || "all"}, ${month}/${year}`);
+    const normalizedProv = this.toSnakeCase(prov);
+    const normalizedKab = this.toSnakeCase(kab);
+    console.log(`[Search] Province: ${prov || "all"} (normalized: ${normalizedProv}), City: ${kab || "all"} (normalized: ${normalizedKab}), ${month}/${year}`);
     if (month < 1 || month > 12) {
       console.error("[Search] Invalid month: must be between 1 and 12");
       return {
@@ -80,7 +86,7 @@ class KemenagPrayer {
           data: []
         };
       }
-      const matchProv = provs.find(p => p.name?.toLowerCase()?.includes(prov?.toLowerCase()) || p.value === prov);
+      const matchProv = provs.find(p => this.toSnakeCase(p.name)?.includes(normalizedProv) || p.value === prov);
       if (!matchProv) {
         console.log("[Search] Province not found");
         return {
@@ -113,7 +119,7 @@ class KemenagPrayer {
       }
       let kabId = "";
       if (kab) {
-        const matchKab = kabs.find(k => k.name?.toLowerCase()?.includes(kab?.toLowerCase()) || k.value === kab);
+        const matchKab = kabs.find(k => this.toSnakeCase(k.name)?.includes(normalizedKab) || k.value === kab);
         if (matchKab) {
           kabId = matchKab.value;
         } else {
@@ -133,7 +139,7 @@ class KemenagPrayer {
         }
       }
       if (!kabId && kabs.length > 0) {
-        const defaultKab = kabs.find(k => k.name.toLowerCase().includes("kota")) || kabs[0];
+        const defaultKab = kabs.find(k => this.toSnakeCase(k.name).includes("kota")) || kabs[0];
         kabId = defaultKab.value;
         console.log(`[Search] No city specified or found, defaulting to ${defaultKab.name}`);
       }

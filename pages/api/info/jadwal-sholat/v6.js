@@ -6,6 +6,10 @@ class PrayerTimeScraper {
     this.client = axios.create();
     console.log("✅ PrayerTime Scraper berhasil dibuat.");
   }
+  toSnakeCase(str) {
+    if (!str) return "";
+    return str.toLowerCase().replace(/[-\s]+/g, "_").replace(/[^a-z0-9_]/g, "");
+  }
   async getWithRetry(url, config, retries = 3, backoff = 1e3) {
     for (let i = 0; i < retries; i++) {
       try {
@@ -38,7 +42,8 @@ class PrayerTimeScraper {
         console.log(`✅ Ditemukan ${data.data.length} kota.`);
         return data.data.map(item => ({
           id: item.id,
-          name: item.lokasi.replace(/KAB\. |KOTA | Regency| City/gi, "").trim()
+          name: item.lokasi.replace(/KAB\. |KOTA | Regency| City/gi, "").trim(),
+          normalizedName: this.toSnakeCase(item.lokasi.replace(/KAB\. |KOTA | Regency| City/gi, "").trim())
         }));
       } else {
         console.error("❌ Gagal mendapatkan daftar kota:", data.message || "Unknown error");
@@ -51,7 +56,8 @@ class PrayerTimeScraper {
   }
   async getCityId(cityName) {
     try {
-      console.log(`🔍 Mencari ID kota untuk: ${cityName}...`);
+      const normalizedCityName = this.toSnakeCase(cityName);
+      console.log(`🔍 Mencari ID kota untuk: ${cityName} (normalized: ${normalizedCityName})...`);
       const url = `${this.baseUrl}/v2/kota`;
       const response = await this.getWithRetry(url, {
         headers: {
@@ -62,7 +68,7 @@ class PrayerTimeScraper {
       });
       const data = response.data;
       if (data.error === "0" && data.data) {
-        const city = data.data.find(item => item.lokasi.toLowerCase().includes(cityName.toLowerCase()));
+        const city = data.data.find(item => this.toSnakeCase(item.lokasi.replace(/KAB\. |KOTA | Regency| City/gi, "").trim()).includes(normalizedCityName));
         if (city) {
           console.log(`✅ ID kota ditemukan: ${city.id} (${city.lokasi})`);
           return city.id;
@@ -250,8 +256,9 @@ class PrayerTimeScraper {
     city,
     date
   }) {
+    const normalizedCity = this.toSnakeCase(city);
     console.log("\n" + "=".repeat(50));
-    console.log(`🕌 PENCARIAN JADWAL SHOLAT: ${city || "Kosong"} ${date ? `(${date})` : "(Tanggal saat ini)"}`);
+    console.log(`🕌 PENCARIAN JADWAL SHOLAT: ${city || "Kosong"} (normalized: ${normalizedCity}) ${date ? `(${date})` : "(Tanggal saat ini)"}`);
     console.log("=".repeat(50));
     try {
       if (!city || !city.trim()) {

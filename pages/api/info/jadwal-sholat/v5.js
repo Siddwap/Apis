@@ -18,6 +18,10 @@ class JadwalSholat {
     this.initialized = false;
     console.log("Proses: Instance Scraper berhasil dibuat.");
   }
+  toSnakeCase(str) {
+    if (!str) return "";
+    return str.toLowerCase().replace(/[-\s]+/g, "_").replace(/[^a-z0-9_]/g, "");
+  }
   async ensureInit() {
     if (!this.initialized) {
       console.log("Proses: Inisialisasi sesi awal...");
@@ -62,7 +66,8 @@ class JadwalSholat {
     city,
     ...rest
   }) {
-    console.log(`\nProses: Memulai pencarian untuk kota "${city || "Tidak ada input"}"`);
+    const normalizedCity = this.toSnakeCase(city);
+    console.log(`\nProses: Memulai pencarian untuk kota "${city || "Tidak ada input"}" (normalized: ${normalizedCity})`);
     try {
       await this.ensureInit();
       await this.ensureCities();
@@ -75,10 +80,10 @@ class JadwalSholat {
           totalCities: this.cities?.length || 0
         };
       }
-      const matchedCity = this.findCity(city);
+      const matchedCity = this.findCity(city, normalizedCity);
       if (!matchedCity) {
         console.log(`Peringatan: Kota "${city}" tidak ditemukan.`);
-        const similarCities = this.findSimilarCities(city);
+        const similarCities = this.findSimilarCities(city, normalizedCity);
         return {
           success: false,
           message: `Kota "${city}" tidak ditemukan.`,
@@ -190,13 +195,15 @@ class JadwalSholat {
   unescapeJson(str) {
     return str?.replace(/&quot;/g, '"')?.replace(/&amp;/g, "&") || "{}";
   }
-  findCity(query) {
-    const normalizedQuery = query.toLowerCase().replace(/\s+/g, "-");
-    return this.cities?.find(city => city.slug === normalizedQuery || city.name.toLowerCase() === query.toLowerCase());
+  findCity(query, normalizedQuery) {
+    if (!this.cities) return null;
+    normalizedQuery = normalizedQuery || this.toSnakeCase(query);
+    return this.cities.find(city => this.toSnakeCase(city.slug) === normalizedQuery || this.toSnakeCase(city.name) === normalizedQuery);
   }
-  findSimilarCities(query) {
-    const searchTerm = query.toLowerCase().replace(/-/g, " ");
-    return this.cities?.filter(city => city.name.toLowerCase().includes(searchTerm)) || [];
+  findSimilarCities(query, normalizedQuery) {
+    if (!this.cities) return [];
+    normalizedQuery = normalizedQuery || this.toSnakeCase(query);
+    return this.cities.filter(city => this.toSnakeCase(city.name).includes(normalizedQuery) || this.toSnakeCase(city.slug).includes(normalizedQuery));
   }
   getHeaders(additional = {}) {
     return {
