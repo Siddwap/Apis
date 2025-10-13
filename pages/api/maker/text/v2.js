@@ -20,25 +20,37 @@ class TextEffectGenerator {
   }
   validateUrl(url) {
     try {
-      new URL(url);
-      if (/https?:\/\/(ephoto360|photooxy|textpro)\.(com|me)/i.test(url)) {
+      const parsedUrl = new URL(url);
+      if (!/^https?:$/.test(parsedUrl.protocol)) {
         return {
           valid: false,
-          message: "URL must be a specific effect page, not the main domain"
+          message: "URL must use HTTP or HTTPS"
+        };
+      }
+      const validDomains = /^(www\.)?(textpro\.me|photooxy\.com|ephoto360\.com)$/i;
+      if (!validDomains.test(parsedUrl.hostname)) {
+        return {
+          valid: false,
+          message: "URL must be from textpro.me, photooxy.com, or ephoto360.com"
         };
       }
       return {
-        valid: true
+        valid: true,
+        message: "Valid URL"
       };
-    } catch {
+    } catch (error) {
       return {
         valid: false,
-        message: "Invalid URL format"
+        message: `Invalid URL: ${error.message}`
       };
     }
   }
   getSupportedTypes() {
     return `Supported types: ${this.supportedTypes.join(", ")}`;
+  }
+  cleanUrl(href, baseUrl) {
+    let cleanHref = href.startsWith(this.corsProxy) ? href.substring(this.corsProxy.length) : href;
+    return cleanHref.startsWith("http") ? cleanHref : baseUrl + cleanHref;
   }
   async search({
     query = "",
@@ -60,12 +72,17 @@ class TextEffectGenerator {
       });
       const body = response.data;
       let items = [];
+      let baseUrl = "";
       if (type === "textpro") {
+        baseUrl = "https://textpro.me";
         const $ = cheerio.load(body);
-        items = $(".row .col-md-4").map((_, el) => ({
-          link: `https://textpro.me${$(el).find(".div-effect a").attr("href") || ""}`,
-          title: $(el).find(".title-effect-home").text().trim() || "Untitled"
-        })).get();
+        items = $(".row .col-md-4").map((_, el) => {
+          let href = $(el).find(".div-effect a").attr("href") || "";
+          return {
+            link: this.cleanUrl(href, baseUrl),
+            title: $(el).find(".title-effect-home").text().trim() || "Untitled"
+          };
+        }).get();
         if (items.length === 0) {
           const jsonResponse = await axios.get(this.urlMap.textproJson, {
             headers: this.defaultHeaders,
@@ -81,16 +98,24 @@ class TextEffectGenerator {
         const $ = cheerio.load(body);
         switch (type) {
           case "ephoto":
-            items = $(".row .col-md-4").map((_, el) => ({
-              link: `https://en.ephoto360.com${$(el).find(".div-effect a").attr("href") || ""}`,
-              title: $(el).find(".title-effect-home").text().trim() || "Untitled"
-            })).get();
+            baseUrl = "https://en.ephoto360.com";
+            items = $(".row .col-md-4").map((_, el) => {
+              let href = $(el).find(".div-effect a").attr("href") || "";
+              return {
+                link: this.cleanUrl(href, baseUrl),
+                title: $(el).find(".title-effect-home").text().trim() || "Untitled"
+              };
+            }).get();
             break;
           case "photooxy":
-            items = $(".row.col-sm-12").map((_, el) => ({
-              link: `https://photooxy.com${$(el).find(".title-effect-home a").attr("href") || ""}`,
-              title: $(el).find(".title-effect-home a").text().trim() || "Untitled"
-            })).get();
+            baseUrl = "https://photooxy.com";
+            items = $(".row.col-sm-12").map((_, el) => {
+              let href = $(el).find(".title-effect-home a").attr("href") || "";
+              return {
+                link: this.cleanUrl(href, baseUrl),
+                title: $(el).find(".title-effect-home a").text().trim() || "Untitled"
+              };
+            }).get();
             break;
         }
       }
@@ -102,7 +127,7 @@ class TextEffectGenerator {
   }
   async generate({
     url = "",
-    text = ""
+    text = []
   }) {
     const urlValidation = this.validateUrl(url);
     if (!urlValidation.valid) {
@@ -241,12 +266,22 @@ export default async function handler(req, res) {
             error: "Parameter 'url' is required for action 'generate'."
           });
         }
-        if (!params.text) {
+        let textInput = [];
+        if (params.text) {
+          if (typeof params.text === "string" && params.text.trim()) {
+            textInput = [params.text.trim()];
+          } else if (Array.isArray(params.text)) {
+            textInput = params.text.map(t => t.trim()).filter(t => t);
+          }
+        }
+        const textEntries = Object.fromEntries(Object.entries(params).filter(([k]) => k.startsWith("text")));
+        const textFromEntries = Object.values(textEntries).filter(t => typeof t === "string" && t.trim());
+        textInput = textFromEntries.length > 0 ? textFromEntries : textInput;
+        if (textInput.length === 0) {
           return res.status(400).json({
-            error: "Parameter 'text' is required for action 'generate'."
+            error: "At least one non-empty 'text' parameter (single, multi, or entries) is required for action 'generate'."
           });
         }
-        const textInput = typeof params.text === "string" ? params.text : params.text;
         response = await textEffect.generate({
           url: params.url,
           text: textInput

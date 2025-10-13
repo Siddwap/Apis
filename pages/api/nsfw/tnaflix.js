@@ -1,15 +1,12 @@
 import axios from "axios";
 import * as cheerio from "cheerio";
-import PROXY from "@/configs/proxy-url";
 class TNAFlixScraper {
   constructor() {
     this.config = {
       baseUrl: "https://www.tnaflix.com",
-      baseProxy: PROXY.url,
       endpoint: "/"
     };
-    this.proxiedBase = this.config.baseProxy + this.config.baseUrl;
-    console.log("CORS proxy", PROXY.url);
+    this.proxiedBase = this.config.baseUrl;
   }
   async home() {
     try {

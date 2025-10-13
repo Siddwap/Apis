@@ -1,8 +1,10 @@
 import axios from "axios";
 import SpoofHead from "@/lib/spoof-head";
+import PROXY from "@/configs/proxy-url";
 class AifreeforeverClient {
   constructor() {
-    this.baseURL = "https://aifreeforever.com";
+    this.baseURL = PROXY.url + "https://aifreeforever.com";
+    console.log("CORS proxy", PROXY.url);
     this.sessionId = null;
     this.cooldown = 0;
     this.cooldownInterval = null;

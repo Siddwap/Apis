@@ -120,6 +120,9 @@ class WudysoftAPI {
       return null;
     }
   }
+  _random() {
+    return Math.random().toString(36).substring(2, 12);
+  }
 }
 class GeminiGenAPI {
   constructor() {
@@ -150,7 +153,7 @@ class GeminiGenAPI {
       const token = sessionData.token;
       if (!token) throw new Error("Token tidak valid di sesi yang tersimpan.");
       console.log("Proses: Sesi berhasil dimuat.");
-      return token;
+      return sessionData;
     } catch (e) {
       throw new Error(`Gagal memuat sesi dari kunci "${key}": ${e.message}`);
     }
@@ -185,25 +188,109 @@ class GeminiGenAPI {
     const accessToken = activateResponse.data?.access_token;
     if (!accessToken) throw new Error("Gagal mendapatkan access token setelah aktivasi.");
     console.log("Proses: Aktivasi akun berhasil.");
-    return accessToken;
+    return {
+      token: accessToken,
+      email: email,
+      password: password
+    };
   }
   async register() {
     try {
       console.log("Proses: Mendaftarkan sesi baru...");
-      const token = await this._performRegistration();
+      const {
+        token,
+        email,
+        password
+      } = await this._performRegistration();
       const sessionToSave = JSON.stringify({
-        token: token
+        token: token,
+        email: email,
+        password: password
       });
       const sessionTitle = `geminigen-token-${this._random()}`;
       const newKey = await this.wudysoft.createPaste(sessionTitle, sessionToSave);
       if (!newKey) throw new Error("Gagal menyimpan sesi baru ke Wudysoft.");
       console.log(`-> Sesi baru berhasil didaftarkan. Kunci Anda: ${newKey}`);
       return {
-        key: newKey
+        key: newKey,
+        email: email,
+        password: password
       };
     } catch (error) {
       const errorMessage = error.response?.data?.message || error.message;
       console.error(`Proses registrasi gagal: ${errorMessage}`);
+      throw new Error(errorMessage);
+    }
+  }
+  async login({
+    email,
+    password
+  }) {
+    try {
+      console.log(`Proses: Mencoba login dengan email: ${email}`);
+      const response = await this.api.post("/login-v2", {
+        username: email,
+        password: password
+      }, {
+        headers: {
+          "content-type": "application/json",
+          "cache-control": "no-cache",
+          pragma: "no-cache",
+          priority: "u=1, i",
+          "sec-fetch-dest": "empty",
+          "sec-fetch-mode": "cors",
+          "sec-fetch-site": "same-site"
+        }
+      });
+      const accessToken = response.data?.access_token;
+      if (!accessToken) throw new Error("Gagal mendapatkan access token dari login.");
+      console.log("Proses: Login berhasil.");
+      const sessionToSave = JSON.stringify({
+        token: accessToken,
+        email: email,
+        password: password
+      });
+      const sessionTitle = `geminigen-token-${this._random()}`;
+      const newKey = await this.wudysoft.createPaste(sessionTitle, sessionToSave);
+      if (!newKey) throw new Error("Gagal menyimpan sesi login ke Wudysoft.");
+      console.log(`-> Sesi login berhasil disimpan. Kunci Anda: ${newKey}`);
+      return {
+        key: newKey,
+        token: accessToken,
+        email: email,
+        password: password
+      };
+    } catch (error) {
+      const errorMessage = error.response?.data?.message || error.message;
+      console.error(`Proses login gagal: ${errorMessage}`);
+      throw new Error(errorMessage);
+    }
+  }
+  async me({
+    key
+  }) {
+    try {
+      const sessionData = await this._getTokenFromKey(key);
+      const token = sessionData.token;
+      console.log("Proses: Mengambil informasi pengguna...");
+      const response = await this.api.get("/me", {
+        headers: {
+          authorization: `Bearer ${token}`,
+          "sec-ch-ua": `"Chromium";v="127", "Not)A;Brand";v="99", "Microsoft Edge Simulate";v="127", "Lemur";v="127"`,
+          "sec-ch-ua-mobile": "?1",
+          "sec-ch-ua-platform": `"Android"`
+        }
+      });
+      console.log("Proses: Berhasil mendapatkan informasi pengguna.");
+      return {
+        ...response.data,
+        key: key,
+        email: sessionData.email,
+        password: sessionData.password
+      };
+    } catch (error) {
+      const errorMessage = error.response?.data?.message || error.message;
+      console.error(`Proses me gagal: ${errorMessage}`);
       throw new Error(errorMessage);
     }
   }
@@ -212,9 +299,11 @@ class GeminiGenAPI {
   }) {
     if (key) {
       try {
-        const token = await this._getTokenFromKey(key);
+        const sessionData = await this._getTokenFromKey(key);
         return {
-          token: token,
+          token: sessionData.token,
+          email: sessionData.email,
+          password: sessionData.password,
           key: key
         };
       } catch (error) {
@@ -228,9 +317,11 @@ class GeminiGenAPI {
       throw new Error("Gagal mendaftarkan sesi baru secara otomatis.");
     }
     console.log(`-> PENTING: Simpan kunci baru ini untuk penggunaan selanjutnya: ${newSession.key}`);
-    const newToken = await this._getTokenFromKey(newSession.key);
+    const sessionData = await this._getTokenFromKey(newSession.key);
     return {
-      token: newToken,
+      token: sessionData.token,
+      email: sessionData.email,
+      password: sessionData.password,
       key: newSession.key
     };
   }
@@ -436,6 +527,22 @@ export default async function handler(req, res) {
       case "register":
         response = await api.register();
         break;
+      case "login":
+        if (!params.email || !params.password) {
+          return res.status(400).json({
+            error: "Parameter 'email' dan 'password' wajib diisi untuk action 'login'."
+          });
+        }
+        response = await api.login(params);
+        break;
+      case "me":
+        if (!params.key) {
+          return res.status(400).json({
+            error: "Parameter 'key' wajib diisi untuk action 'me'."
+          });
+        }
+        response = await api.me(params);
+        break;
       case "txt2vid":
         if (!params.prompt) {
           return res.status(400).json({
@@ -481,7 +588,7 @@ export default async function handler(req, res) {
         break;
       default:
         return res.status(400).json({
-          error: `Action tidak valid: ${action}. Action yang didukung: 'register', 'txt2vid', 'txt2img', 'img2vid', 'list_key', 'del_key' dan 'status'.`
+          error: `Action tidak valid: ${action}. Action yang didukung: 'register', 'login', 'me', 'txt2vid', 'txt2img', 'img2vid', 'list_key', 'del_key', 'status'.`
         });
     }
     return res.status(200).json(response);

@@ -378,7 +378,11 @@ class AIToolsXAPI {
       console.log("\n[SUCCESS] Sesi berhasil diekstrak dari cookie!");
       console.log(`[TOKEN] ${sessionData.access_token.substring(0, 50)}...`);
       console.log("\n====== REGISTRASI SELESAI ======\n");
-      return sessionData;
+      return {
+        ...sessionData,
+        email: email,
+        password: password
+      };
     } catch (e) {
       console.error("\n[ERROR] Gagal mem-parse cookie auth:", e.message);
       throw new Error("Gagal mem-parse cookie auth-token.");
@@ -388,17 +392,61 @@ class AIToolsXAPI {
     try {
       console.log("Proses: Mendaftarkan sesi baru...");
       const sessionData = await this._performRegistration();
-      const sessionToSave = JSON.stringify(sessionData);
+      const sessionToSave = JSON.stringify({
+        access_token: sessionData.access_token,
+        email: sessionData.email,
+        password: sessionData.password
+      });
       const sessionTitle = `aitoolsx-session-${this._random()}`;
       const newKey = await this.wudysoft.createPaste(sessionTitle, sessionToSave);
       if (!newKey) throw new Error("Gagal menyimpan sesi baru.");
       console.log(`-> Sesi baru berhasil didaftarkan. Kunci Anda: ${newKey}`);
       return {
-        key: newKey
+        key: newKey,
+        email: sessionData.email,
+        password: sessionData.password
       };
     } catch (error) {
       console.error(`Proses registrasi gagal: ${error.message}`);
       throw error;
+    }
+  }
+  async login({
+    email,
+    password
+  }) {
+    try {
+      console.log(`Proses: Mencoba login dengan email: ${email}`);
+      const loginPayload = {
+        email: email,
+        password: password,
+        gotrue_meta_security: {}
+      };
+      const response = await this.supabaseApi.post("/token?grant_type=password", loginPayload);
+      const sessionData = response.data;
+      if (!sessionData.access_token) throw new Error("Gagal mendapatkan access token dari login.");
+      console.log("Proses: Login berhasil.");
+      const sessionToSave = JSON.stringify({
+        access_token: sessionData.access_token,
+        email: email,
+        password: password
+      });
+      const sessionTitle = `aitoolsx-session-${this._random()}`;
+      const newKey = await this.wudysoft.createPaste(sessionTitle, sessionToSave);
+      if (!newKey) throw new Error("Gagal menyimpan sesi login ke Wudysoft.");
+      console.log(`-> Sesi login berhasil disimpan. Kunci Anda: ${newKey}`);
+      const cookieValue = `base64-${Buffer.from(JSON.stringify(sessionData)).toString("base64")}`;
+      await this.cookieJar.setCookie(`sb-akamiftetnmdyucuqrms-auth-token=${cookieValue}; Domain=.aitoolsx.net; Path=/; Secure; SameSite=Lax`, "https://aitoolsx.net");
+      return {
+        key: newKey,
+        access_token: sessionData.access_token,
+        email: email,
+        password: password
+      };
+    } catch (error) {
+      const errorMessage = error.response?.data?.message || error.message;
+      console.error(`Proses login gagal: ${errorMessage}`);
+      throw new Error(errorMessage);
     }
   }
   async _ensureValidSession({
@@ -596,6 +644,14 @@ export default async function handler(req, res) {
       case "register":
         response = await api.register();
         break;
+      case "login":
+        if (!params.email || !params.password) {
+          return res.status(400).json({
+            error: "Parameter 'email' dan 'password' wajib diisi untuk action 'login'."
+          });
+        }
+        response = await api.login(params);
+        break;
       case "txt2img":
         if (!params.prompt) {
           return res.status(400).json({
@@ -633,7 +689,7 @@ export default async function handler(req, res) {
         break;
       default:
         return res.status(400).json({
-          error: `Action tidak valid: ${action}. Action yang didukung: 'register', 'txt2img', 'img2img', 'list_key', 'del_key' dan 'status'.`
+          error: `Action tidak valid: ${action}. Action yang didukung: 'register', 'login', 'txt2img', 'img2img', 'list_key', 'del_key', 'status'.`
         });
     }
     return res.status(200).json(response);

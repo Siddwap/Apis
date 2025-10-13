@@ -1,26 +1,19 @@
 import axios from "axios";
 import * as cheerio from "cheerio";
-import PROXY from "@/configs/proxy-url";
+
 class Komiku {
   constructor() {
     this.host = "https://komiku.org";
     this.apiHost = "https://api.komiku.org";
     this.source = "komiku";
-    this.proxy = PROXY.url;
-    this.axios = axios.create({
-      baseURL: this.proxy,
-      timeout: 6e4
-    });
-    console.log("CORS proxy", PROXY.url);
   }
-  async home({
-    page = 1
-  } = {}) {
+
+  async home({ page = 1 } = {}) {
     try {
       console.log(`Fetching home page: ${page}`);
-      const {
-        data
-      } = await this.axios.get(`${this.apiHost}/manga/page/${page}/?orderby=modified`);
+      const { data } = await axios.get(`${this.apiHost}/manga/page/${page}/?orderby=modified`, {
+        timeout: 60000
+      });
       const $ = cheerio.load(data);
       const mangas = [];
       $("div.bge").each((_, el) => {
@@ -57,10 +50,7 @@ class Komiku {
           latestChapterTitle: latestChapterTitle,
           readerInfo: readerInfo,
           chapters: [],
-          coverImages: [{
-            index: 1,
-            imageUrls: [coverImage]
-          }]
+          coverImages: [{ index: 1, imageUrls: [coverImage] }]
         });
       });
       console.log(`Fetched ${mangas.length} mangas from home`);
@@ -70,14 +60,13 @@ class Komiku {
       return [];
     }
   }
-  async detail({
-    id = ""
-  } = {}) {
+
+  async detail({ id = "" } = {}) {
     try {
       console.log(`Fetching manga detail: ${id}`);
-      const {
-        data
-      } = await this.axios.get(`${this.host}/manga/${id}`);
+      const { data } = await axios.get(`${this.host}/manga/${id}`, {
+        timeout: 60000
+      });
       const $ = cheerio.load(data);
       const manga = {
         id: id,
@@ -86,10 +75,7 @@ class Komiku {
         description: $("#Judul > p.desc").text().trim() || "Description unavailable",
         genres: [],
         status: "Ongoing",
-        coverImages: [{
-          index: 1,
-          imageUrls: [$("#Informasi > div > img").attr("src") || ""]
-        }],
+        coverImages: [{ index: 1, imageUrls: [$("#Informasi > div > img").attr("src") || ""] }],
         chapters: []
       };
       $("#Informasi > div > p").each((_, el) => {
@@ -130,22 +116,19 @@ class Komiku {
         description: "Description unavailable",
         genres: [],
         status: "Ongoing",
-        coverImages: [{
-          imageUrls: []
-        }],
+        coverImages: [{ imageUrls: [] }],
         chapters: []
       };
     }
   }
-  async search({
-    query = ""
-  } = {}) {
+
+  async search({ query = "" } = {}) {
     try {
       console.log(`Searching manga: ${query}`);
       const q = query.replace(/\s+/g, "+");
-      const {
-        data
-      } = await this.axios.get(`${this.apiHost}/?post_type=manga&s=${q}`);
+      const { data } = await axios.get(`${this.apiHost}/?post_type=manga&s=${q}`, {
+        timeout: 60000
+      });
       const $ = cheerio.load(data);
       const mangas = [];
       $("div.bge").each((_, el) => {
@@ -182,10 +165,7 @@ class Komiku {
           latestChapterTitle: latestChapterTitle,
           updateInfo: updateInfo,
           chapters: [],
-          coverImages: [{
-            index: 1,
-            imageUrls: [coverImage]
-          }]
+          coverImages: [{ index: 1, imageUrls: [coverImage] }]
         });
       });
       console.log(`Found ${mangas.length} mangas for search: ${query}`);
@@ -195,15 +175,14 @@ class Komiku {
       return [];
     }
   }
-  async chapter({
-    id = ""
-  } = {}) {
+
+  async chapter({ id = "" } = {}) {
     try {
       console.log(`Fetching chapter: ${id}`);
       const targetLink = `${this.host}/${id}`;
-      const {
-        data
-      } = await this.axios.get(targetLink);
+      const { data } = await axios.get(targetLink, {
+        timeout: 60000
+      });
       const $ = cheerio.load(data);
       const chapterNumber = parseFloat(id.split("chapter-").pop() || "0") || 0;
       const chapter = {
@@ -236,6 +215,7 @@ class Komiku {
       };
     }
   }
+
   errImg(str) {
     const match = str.match(/this\.src='([^']+)'/i);
     return match?.[1] || "";

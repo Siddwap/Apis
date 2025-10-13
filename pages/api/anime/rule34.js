@@ -1,15 +1,14 @@
 import axios from "axios";
 import * as cheerio from "cheerio";
-import PROXY from "@/configs/proxy-url";
+import apiConfig from "@/configs/apiConfig";
 class Rule34Scraper {
   constructor() {
     this.config = {
       baseUrl: "https://rule34video.com",
-      baseProxy: PROXY.url,
+      baseProxy: `https://${apiConfig.DOMAIN_URL}/api/tools/web/html/v12?url=`,
       endpoint: "/"
     };
     this.proxiedBase = this.config.baseProxy + this.config.baseUrl;
-    console.log("CORS proxy", PROXY.url);
   }
   async home() {
     try {

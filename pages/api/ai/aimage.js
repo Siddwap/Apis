@@ -144,6 +144,7 @@ class AImageAI {
         base: "https://aimage.ai/api",
         auth: {
           signUp: "/auth/sign-up/email",
+          signIn: "/auth/sign-in/email",
           verifyEmail: "/auth/verify-email",
           getSession: "/auth/get-session"
         },
@@ -266,24 +267,89 @@ class AImageAI {
     console.log("\n[SUCCESS] Registrasi AImage AI berhasil!");
     console.log(`[USER] ${sessionResponse.data.user.name} (${sessionResponse.data.user.email})`);
     console.log(`[TOKEN] ${sessionResponse.data.session.token.substring(0, 50)}...`);
-    return sessionResponse.data;
+    return {
+      ...sessionResponse.data,
+      email: email,
+      password: password
+    };
   }
   async register() {
     try {
       console.log("Proses: Mendaftarkan sesi AImage AI baru...");
       const sessionData = await this._performRegistration();
-      const sessionToSave = JSON.stringify(sessionData);
+      const sessionToSave = JSON.stringify({
+        session: sessionData.session,
+        user: sessionData.user,
+        email: sessionData.email,
+        password: sessionData.password
+      });
       const sessionTitle = `aimageai-session-${this._random()}`;
       const newKey = await this.wudysoft.createPaste(sessionTitle, sessionToSave);
       if (!newKey) throw new Error("Gagal menyimpan sesi baru.");
       console.log(`-> Sesi AImage AI baru berhasil didaftarkan. Kunci Anda: ${newKey}`);
       return {
         key: newKey,
-        user: sessionData.user
+        user: sessionData.user,
+        email: sessionData.email,
+        password: sessionData.password
       };
     } catch (error) {
       console.error(`Proses registrasi AImage AI gagal: ${error.message}`);
       throw error;
+    }
+  }
+  async login({
+    email,
+    password
+  }) {
+    try {
+      console.log(`Proses: Mencoba login dengan email: ${email}`);
+      const loginPayload = {
+        email: email,
+        password: password,
+        callbackURL: "/"
+      };
+      const response = await this.api.post(this.config.endpoints.auth.signIn, loginPayload, {
+        headers: {
+          "content-type": "application/json",
+          "cache-control": "no-cache",
+          pragma: "no-cache",
+          priority: "u=1, i"
+        }
+      });
+      if (response.status !== 200) {
+        throw new Error(`Gagal login: ${response.statusText}`);
+      }
+      console.log("Proses: Login berhasil, mendapatkan session...");
+      const sessionResponse = await this.api.get(this.config.endpoints.auth.getSession);
+      if (!sessionResponse.data?.session?.token) {
+        throw new Error("Gagal mendapatkan session setelah login");
+      }
+      const sessionData = {
+        session: sessionResponse.data.session,
+        user: sessionResponse.data.user,
+        email: email,
+        password: password
+      };
+      const sessionToSave = JSON.stringify(sessionData);
+      const sessionTitle = `aimageai-session-${this._random()}`;
+      const newKey = await this.wudysoft.createPaste(sessionTitle, sessionToSave);
+      if (!newKey) throw new Error("Gagal menyimpan sesi login ke Wudysoft.");
+      console.log(`-> Sesi login berhasil disimpan. Kunci Anda: ${newKey}`);
+      await this.cookieJar.setCookie(`__Secure-better-auth.session_token=${sessionData.session.token}; Domain=.aimage.ai; Path=/; Secure; SameSite=Lax`, "https://aimage.ai");
+      console.log("\n[SUCCESS] Login AImage AI berhasil!");
+      console.log(`[USER] ${sessionData.user.name} (${sessionData.user.email})`);
+      console.log(`[TOKEN] ${sessionData.session.token.substring(0, 50)}...`);
+      return {
+        key: newKey,
+        user: sessionData.user,
+        email: email,
+        password: password
+      };
+    } catch (error) {
+      const errorMessage = error.response?.data?.message || error.message;
+      console.error(`Proses login gagal: ${errorMessage}`);
+      throw new Error(errorMessage);
     }
   }
   async _ensureValidSession({
@@ -436,7 +502,9 @@ class AImageAI {
       });
       return {
         user: sessionData.user,
-        session: sessionData.session
+        session: sessionData.session,
+        email: sessionData.email,
+        password: sessionData.password
       };
     } catch (error) {
       console.error(`Gagal mendapatkan info user: ${error.message}`);
@@ -460,6 +528,14 @@ export default async function handler(req, res) {
     switch (action) {
       case "register":
         response = await api.register();
+        break;
+      case "login":
+        if (!params.email || !params.password) {
+          return res.status(400).json({
+            error: "Parameter 'email' dan 'password' wajib diisi untuk action 'login'."
+          });
+        }
+        response = await api.login(params);
         break;
       case "generate":
         if (!params.prompt) {
@@ -493,7 +569,7 @@ export default async function handler(req, res) {
         break;
       default:
         return res.status(400).json({
-          error: `Action tidak valid: ${action}. Action yang didukung: 'register', 'generate', 'status', 'list_key', 'del_key', 'user_info'.`
+          error: `Action tidak valid: ${action}. Action yang didukung: 'register', 'login', 'generate', 'status', 'list_key', 'del_key', 'user_info'.`
         });
     }
     return res.status(200).json(response);

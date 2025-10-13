@@ -18,7 +18,7 @@ class Ephoto360 {
     }));
     this.baseUrl = "https://en.ephoto360.com";
   }
-  async generate(url, texts = {}) {
+  async generate(url, texts = []) {
     try {
       const {
         data
@@ -26,7 +26,7 @@ class Ephoto360 {
       const $ = cheerio.load(data);
       const formData = new URLSearchParams();
       $("input[name='text[]']").each((i, el) => {
-        formData.append("text[]", texts[`text${i + 1}`] || $(el).attr("placeholder") || "");
+        formData.append("text[]", texts[i] || $(el).attr("placeholder") || "");
       });
       ["token", "build_server", "build_server_id"].forEach(name => formData.append(name, $(`input[name="${name}"]`).val() || ""));
       formData.append("file_image_input", "");
@@ -36,7 +36,7 @@ class Ephoto360 {
       } = await this.axios.post(url, formData);
       const $post = cheerio.load(postRes);
       const formValueInput = $post("#form_value_input").attr("value");
-      if (!formValueInput) throw new Error("Gagal mengambil form_value_input ");
+      if (!formValueInput) throw new Error("Gagal mengambil form_value_input");
       const {
         id,
         token,
@@ -51,7 +51,7 @@ class Ephoto360 {
         build_server_id: build_server_id
       });
       $("input[name='text[]']").each((i, el) => {
-        finalData.append("text[]", texts[`text${i + 1}`] || $(el).attr("placeholder") || "");
+        finalData.append("text[]", texts[i] || $(el).attr("placeholder") || "");
       });
       const {
         data: result
@@ -108,37 +108,57 @@ export default async function handler(req, res) {
     action,
     url,
     query,
-    ...rest
+    ...params
   } = req.method === "GET" ? req.query : req.body;
   const ephoto = new Ephoto360();
+  const supportedActions = ["search", "create"];
   try {
-    if (action === "search") {
-      if (!query) return res.status(400).json({
-        success: false,
-        message: "Parameter 'query' diperlukan untuk pencarian"
-      });
-      const results = await ephoto.search(query);
-      return res.status(200).json(results);
-    }
-    if (action === "create") {
-      if (!url || typeof url !== "string" || !url.startsWith("https://")) {
+    switch (action) {
+      case "search":
+        if (!query) {
+          return res.status(400).json({
+            success: false,
+            message: "Parameter 'query' diperlukan untuk pencarian"
+          });
+        }
+        const searchResults = await ephoto.search(query);
+        return res.status(200).json(searchResults);
+      case "create":
+        if (!url || typeof url !== "string" || !url.startsWith("https://")) {
+          return res.status(400).json({
+            success: false,
+            message: "Parameter 'url' tidak valid atau tidak diberikan"
+          });
+        }
+        let textInput = [];
+        if (params.text) {
+          if (typeof params.text === "string" && params.text.trim()) {
+            textInput = [params.text.trim()];
+          } else if (Array.isArray(params.text)) {
+            textInput = params.text.map(t => t.trim()).filter(t => t);
+          }
+        }
+        const textEntries = Object.fromEntries(Object.entries(params).filter(([k]) => k.startsWith("text")));
+        const textFromEntries = Object.values(textEntries).filter(t => typeof t === "string" && t.trim());
+        textInput = textFromEntries.length > 0 ? textFromEntries : textInput;
+        if (textInput.length === 0) {
+          return res.status(400).json({
+            success: false,
+            message: "At least one non-empty 'text' parameter (single, multi, or entries) is required for action 'create'"
+          });
+        }
+        const result = await ephoto.generate(url, textInput);
+        return res.status(200).json(result);
+      default:
         return res.status(400).json({
           success: false,
-          message: "Parameter 'url' tidak valid atau tidak diberikan"
+          message: `Parameter 'action' tidak valid. Supported actions: ${supportedActions.join(", ")}`
         });
-      }
-      const texts = Object.fromEntries(Object.entries(rest).filter(([k]) => k.startsWith("text")));
-      const result = await ephoto.generate(url, texts);
-      return res.status(200).json(result);
     }
-    return res.status(400).json({
-      success: false,
-      message: "Parameter 'action' tidak valid"
-    });
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: error.message
+      message: error.message || "Internal server error occurred"
     });
   }
 }
