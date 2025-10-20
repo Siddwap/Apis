@@ -167,7 +167,7 @@ class Veo3o1API {
         userInfo: "/api/get-user-info",
         uploadImage: "/api/upload-video-image",
         generateVideo: "/api/generate-video",
-        videoStatus: taskId => `/api/video-status/${taskId}`,
+        videoStatus: task_id => `/api/video-status/${task_id}`,
         downloadR2: "/api/videos/download-to-r2"
       },
       locale: "en",
@@ -460,7 +460,7 @@ class Veo3o1API {
   }
   async status({
     key,
-    taskId
+    task_id
   }) {
     try {
       const {
@@ -468,20 +468,16 @@ class Veo3o1API {
       } = await this._ensureValidSession({
         key: key
       });
-      console.log(`Proses: Mengecek status untuk taskId ${taskId}...`);
-      const statusRes = await this.api.get(this.config.endpoints.videoStatus(taskId));
+      console.log(`Proses: Mengecek status untuk task_id ${task_id}...`);
+      const statusRes = await this.api.get(this.config.endpoints.videoStatus(task_id));
       if (statusRes.data.data.status === "completed" && statusRes.data.data.successFlag === 1) {
-        let videoUrl = statusRes.data.data.videoUrl;
-        if (videoUrl.startsWith("https://tempfile.aiquickdraw.com/")) {
           console.log("Proses: Video temp, otomatis mendownload ke R2...");
           const downloadRes = await this.api.post(this.config.endpoints.downloadR2, {
-            taskId: taskId
+            taskId: task_id
           });
-          videoUrl = downloadRes.data.data.videoUrl;
-        }
         return {
           ...statusRes.data.data,
-          videoUrl: videoUrl,
+          ...downloadRes.data.data,
           key: currentKey
         };
       }
@@ -541,9 +537,9 @@ export default async function handler(req, res) {
         response = await api.del_key(params);
         break;
       case "status":
-        if (!params.key || !params.taskId) {
+        if (!params.key || !params.task_id) {
           return res.status(400).json({
-            error: "Parameter 'key' dan 'taskId' wajib diisi untuk action 'status'."
+            error: "Parameter 'key' dan 'task_id' wajib diisi untuk action 'status'."
           });
         }
         response = await api.status(params);

@@ -32,9 +32,7 @@ class VeoAPI {
         videoQuality: rest.quality || "540p",
         videoModel: rest.model || "v4.5",
         videoPublic: rest.is_public ?? false,
-        ...imageUrl ? {
-          videoImageUrl: imageUrl
-        } : {}
+        videoImageUrl: imageUrl ?? ""
       };
       const res = await axios.post("https://veo31ai.io/api/pixverse-token/gen", body, {
         headers: this.h()
