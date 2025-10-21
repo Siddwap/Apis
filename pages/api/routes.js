@@ -635,6 +635,7 @@ export default function handler(req, res) {
     { path: "/api/ai/dreamyy2k", name: "Dreamyy2k", params: [{ "name": "prompt", "in": "query", "required": false }], },
     { path: "/api/ai/lumina-ai", name: "Lumina-ai", params: [{ "name": "prompt", "in": "query", "required": false }], },
     { path: "/api/ai/soro2", name: "Soro2", params: [{ "name": "prompt", "in": "query", "required": false }], },
+    { path: "/api/ai/ohmyimages", name: "Ohmyimages", params: [{ "name": "prompt", "in": "query", "required": false }], },
     { path: "/api/anime/baca-komik/v1", name: "V1", params: [{ "name": "prompt", "in": "query", "required": false }], },
     { path: "/api/anime/baca-komik/v2", name: "V2", params: [{ "name": "prompt", "in": "query", "required": false }], },
     { path: "/api/anime/kiryuu/v1", name: "V1", params: [{ "name": "prompt", "in": "query", "required": false }], },

@@ -1,5 +1,7 @@
 import axios from "axios";
-import tough from "tough-cookie";
+import {
+  CookieJar
+} from "tough-cookie";
 import {
   wrapper
 } from "axios-cookiejar-support";
@@ -9,7 +11,7 @@ import SpoofHead from "@/lib/spoof-head";
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 class AitryonGenerator {
   constructor(userName, password) {
-    this.jar = new tough.CookieJar();
+    this.jar = new CookieJar();
     this.client = wrapper(axios.create({
       jar: this.jar,
       headers: {

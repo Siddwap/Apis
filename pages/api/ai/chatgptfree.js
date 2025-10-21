@@ -1,6 +1,8 @@
 import axios from "axios";
 import * as cheerio from "cheerio";
-import tough from "tough-cookie";
+import {
+  CookieJar
+} from "tough-cookie";
 import {
   wrapper
 } from "axios-cookiejar-support";
@@ -13,7 +15,7 @@ const proxy = PROXY.url;
 console.log("CORS proxy", PROXY.url);
 class AiChat {
   constructor() {
-    this.jar = new tough.CookieJar();
+    this.jar = new CookieJar();
     this.ax = wrapper(axios.create({
       jar: this.jar,
       withCredentials: true
