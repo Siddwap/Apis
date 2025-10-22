@@ -1,72 +1,39 @@
 import axios from "axios";
 import https from "https";
-import crypto from "crypto";
 class MusicGenerator {
   constructor() {
     this.baseUrl = "https://api.magicmusic.pro";
-    this.expoUrl = "https://exp.host/--/api/v2/push/updateDeviceToken";
-    this.appId = "com.script8888.magicmusicai";
-    this.projectId = "magicmusicai-project";
     this.httpClient = axios.create({
       baseURL: this.baseUrl,
-      timeout: 15e3,
+      timeout: 3e4,
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json"
       },
       httpsAgent: new https.Agent({
-        rejectUnauthorized: false
+        rejectUnauthorized: true,
+        keepAlive: true
       })
     });
-  }
-  async getDevicePushToken() {
-    try {
-      const deviceId = crypto.randomUUID().toLowerCase();
-      const deviceToken = crypto.randomBytes(32).toString("hex");
-      const type = "fcm";
-      const payload = {
-        appId: this.appId,
-        deviceId: deviceId,
-        deviceToken: deviceToken,
-        type: type,
-        projectId: this.projectId,
-        development: "production"
-      };
-      const response = await axios.post(this.expoUrl, payload, {
-        headers: {
-          "Content-Type": "application/json"
-        }
-      });
-      if (!response.data || response.data.errors) {
-        throw new Error(`Expo API error: ${JSON.stringify(response.data.errors)}`);
-      }
-      return deviceToken;
-    } catch (error) {
-      if (error.name === "AbortError") {
-        console.warn("Push token update aborted");
-        return null;
-      }
-      console.error("Error fetching Expo token:", error.message);
-      throw new Error(`ERR_NOTIFICATIONS_NETWORK_ERROR: Error encountered while fetching Expo token: ${error.message}`);
-    }
+    this.httpClient.interceptors.response.use(response => response, error => {
+      const message = error.response?.data?.message || error.message;
+      return Promise.reject(new Error(`API Error: ${message}`));
+    });
   }
   async generate({
     prompt,
+    make_instrumental = false,
+    wait_audio = false,
     ...rest
-  }) {
+  } = {}) {
     try {
-      if (!prompt || typeof prompt !== "string") {
-        throw new Error("Prompt is required and must be a string");
+      if (!prompt || typeof prompt !== "string" || prompt.trim().length === 0) {
+        throw new Error("Prompt is required and must be a non-empty string");
       }
-      const pushToken = await this.getDevicePushToken();
       const payload = {
-        prompt: prompt,
-        make_instrumental: false,
-        wait_audio: false,
-        pushToken: pushToken || undefined,
-        notificationBody: {
-          fromPath: "home"
-        },
+        prompt: prompt.trim(),
+        make_instrumental: make_instrumental,
+        wait_audio: wait_audio,
         pro: true,
         ...rest
       };
@@ -80,12 +47,12 @@ class MusicGenerator {
   async status({
     task_id,
     ...rest
-  }) {
+  } = {}) {
     try {
-      if (!task_id || typeof task_id !== "string") {
-        throw new Error("Task ID is required and must be a string");
+      if (!task_id || typeof task_id !== "string" || task_id.trim().length === 0) {
+        throw new Error("Task ID is required and must be a non-empty string");
       }
-      const response = await this.httpClient.get(`/api/get?ids=${task_id}`, {
+      const response = await this.httpClient.get(`/api/get?ids=${task_id.trim()}`, {
         params: rest
       });
       return response.data;
