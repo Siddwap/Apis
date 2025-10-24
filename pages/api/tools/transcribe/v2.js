@@ -4,6 +4,7 @@ import FormData from "form-data";
 import {
   v4 as uuidv4
 } from "uuid";
+import SpoofHead from "@/lib/spoof-head";
 class Any2TextConverter {
   constructor() {
     this.baseUrl = "https://any2text.com";
@@ -20,7 +21,8 @@ class Any2TextConverter {
       origin: this.baseUrl,
       referer: this.pageUrl,
       "user-agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36",
-      "x-requested-with": "XMLHttpRequest"
+      "x-requested-with": "XMLHttpRequest",
+      ...SpoofHead()
     };
   }
   async initSession() {

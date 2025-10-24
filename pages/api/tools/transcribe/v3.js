@@ -1,5 +1,6 @@
 import axios from "axios";
 import FormData from "form-data";
+import SpoofHead from "@/lib/spoof-head";
 class SpeechToText {
   constructor() {
     this.api = {
@@ -12,7 +13,8 @@ class SpeechToText {
     this.headers = {
       origin: "https://www.speech-to-text.cloud",
       referer: "https://www.speech-to-text.cloud/",
-      "user-agent": "NB Android/1.0.0"
+      "user-agent": "NB Android/1.0.0",
+      ...SpoofHead()
     };
   }
   async isValidUrl(url) {

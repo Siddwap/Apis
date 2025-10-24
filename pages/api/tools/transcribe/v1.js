@@ -2,6 +2,7 @@ import axios from "axios";
 import * as cheerio from "cheerio";
 import CryptoJS from "crypto-js";
 import FormData from "form-data";
+import SpoofHead from "@/lib/spoof-head";
 class TalknotesConverter {
   constructor() {
     this.pageUrl = "https://talknotes.io/tools/transcribe-to-text";
@@ -13,7 +14,8 @@ class TalknotesConverter {
       accept: "*/*",
       origin: "https://talknotes.io",
       referer: "https://talknotes.io/",
-      "user-agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36"
+      "user-agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36",
+      ...SpoofHead()
     };
   }
   async fetchApiKey() {
