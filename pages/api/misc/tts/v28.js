@@ -167,11 +167,30 @@ class SvaraApi {
       id: "zm_yunyang",
       name: "Yunyang"
     }];
-    this.ids = new Set(this.v.map(v => v.id));
+    this.voiceMap = new Map();
+    this.v.forEach(voice => {
+      const lowerId = voice.id.toLowerCase();
+      const lowerName = voice.name.toLowerCase();
+      this.voiceMap.set(lowerId, voice);
+      this.voiceMap.set(lowerName, voice);
+    });
   }
   voice_list() {
     console.log("Voice List:", JSON.stringify(this.v, null, 2));
     return this.v;
+  }
+  findVoice(input) {
+    if (!input) return null;
+    const query = input.trim().toLowerCase();
+    if (this.voiceMap.has(query)) {
+      return this.voiceMap.get(query);
+    }
+    for (const [key, voice] of this.voiceMap.entries()) {
+      if (key.includes(query)) {
+        return voice;
+      }
+    }
+    return null;
   }
   async generate({
     voice = "jf_alpha",
@@ -181,19 +200,19 @@ class SvaraApi {
     const token = r.token ?? "wvebnyu6668756h45gfecdfegnhmu6kj5h64g53fvrbgny5";
     const customerId = r.customerId || "default";
     if (!text?.trim?.()) throw new Error("Text wajib diisi");
-    voice = (voice || "jf_alpha").trim().toLowerCase();
-    if (!this.ids.has(voice)) {
+    const selectedVoice = this.findVoice(voice);
+    if (!selectedVoice) {
       console.error(`Invalid voice: "${voice}"`);
       console.log("Available voices:", JSON.stringify(this.v, null, 2));
-      throw new Error(`Voice "${voice}" tidak ada. Lihat list di atas.`);
+      throw new Error(`Voice "${voice}" tidak ditemukan. Gunakan id atau nama (bisa partial).`);
     }
     try {
-      console.log(`Generate: ${voice} | "${text.substring(0, 30)}${text.length > 30 ? "..." : ""}"`);
+      console.log(`Generate: ${selectedVoice.id} (${selectedVoice.name}) | "${text.substring(0, 30)}${text.length > 30 ? "..." : ""}"`);
       const {
         data
       } = await this.a.post("/generate-speech", {
         text: text.trim(),
-        voice: voice,
+        voice: selectedVoice.id,
         customerId: customerId
       }, {
         headers: {
@@ -212,7 +231,7 @@ export default async function handler(req, res) {
   const params = req.method === "GET" ? req.query : req.body;
   if (!params.text) {
     return res.status(400).json({
-      error: "Text are required"
+      error: "Text is required"
     });
   }
   try {

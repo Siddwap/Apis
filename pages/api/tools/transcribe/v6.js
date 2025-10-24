@@ -23,7 +23,7 @@ class Transcriptly {
   }
   async generate({
     input,
-    fileName = "audio",
+    fileName = "audio.mp3",
     duration = 0,
     ...rest
   }) {

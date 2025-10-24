@@ -224,11 +224,11 @@ class VoiserClient {
       const res = r.data?.result || {};
       if (res.completed ?? 0) {
         console.log("complete");
-        return res.text || "";
+        return res || "";
       }
       if (tries >= 60) throw new Error("timeout");
       await new Promise(r => setTimeout(r, 3e3));
-      return this.chk(id, tries + 1);
+      return await this.chk(id, tries + 1);
     } catch (e) {
       console.log("check fail", e?.response?.data || e.message);
       throw e;

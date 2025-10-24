@@ -7,7 +7,7 @@ const themeConfig = {
   },
   layout: {
     isRTL: false,
-    darkMode: false,
+    darkMode: true,
     semiDarkMode: true,
     skin: "bordered",
     contentWidth: "full",
