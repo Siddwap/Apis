@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import axios from "axios";
-class MusicFull {
+class MusicGenerator {
   constructor() {
     try {
       this.reportUrl = "https://account-api.musicful.ai/v2/report-data";
@@ -242,54 +242,49 @@ class MusicFull {
       throw e;
     }
   }
-  static async handle(req, res) {
-    const {
-      action,
-      ...params
-    } = req.method === "GET" ? req.query : req.body;
-    if (!action) {
+}
+export default async function handler(req, res) {
+  const {
+    action,
+    ...params
+  } = req.method === "GET" ? req.query : req.body;
+  if (!action) {
+    return res.status(400).json({
+      error: "Parameter 'action' wajib diisi."
+    });
+  }
+  const api = new MusicGenerator();
+  try {
+    const validActions = ["generate", "status"];
+    if (!validActions.includes(action)) {
       return res.status(400).json({
-        error: "Parameter 'action' wajib diisi."
+        error: `Action tidak valid: ${action}. Action yang didukung: ${validActions.join(", ")}.`
       });
     }
-    const api = new MusicFull();
-    try {
-      let response;
-      switch (action) {
-        case "generate":
-          if (!params.prompt) {
-            return res.status(400).json({
-              error: "Parameter 'prompt' wajib diisi untuk action 'generate'."
-            });
-          }
-          response = await api.generate({
-            mode: params.lyrics ? "lyrics" : "prompt",
-            ...params
-          });
-          break;
-        case "status":
-          if (!params.task_id) {
-            return res.status(400).json({
-              error: "Parameter 'task_id' wajib diisi untuk action 'status'."
-            });
-          }
-          response = await api.status(params);
-          break;
-        default:
+    let responseData;
+    switch (action) {
+      case "generate":
+        if (!params.prompt) {
           return res.status(400).json({
-            error: `Action tidak valid: ${action}. Gunakan 'generate' atau 'status'.`
+            error: "Parameter 'prompt' wajib diisi."
           });
-      }
-      return res.status(200).json({
-        success: true,
-        data: response
-      });
-    } catch (error) {
-      console.error(`[HANDLER FATAL] Action '${action}':`, error.message);
-      return res.status(500).json({
-        success: false,
-        error: error.message || "Terjadi kesalahan internal pada server."
-      });
+        }
+        responseData = await api.generate(params);
+        break;
+      case "status":
+        if (!params.task_id) {
+          return res.status(400).json({
+            error: "Parameter 'task_id' wajib diisi."
+          });
+        }
+        responseData = await api.status(params);
+        break;
     }
+    return res.status(200).json(responseData);
+  } catch (error) {
+    console.error(`[FATAL ERROR] Kegagalan pada action '${action}':`, error);
+    return res.status(500).json({
+      error: error.message || "Terjadi kesalahan internal pada server."
+    });
   }
 }

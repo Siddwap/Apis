@@ -191,7 +191,7 @@ class RemoveClient {
   }
   async RemoveBg(buffer) {
     try {
-      const keyList = ["wYj4CmzTa1CJX2YVsCZdnsZq", "hz99DPWitBbRAgnjTrtG3rEF", "aGSQ7rF4TnnUeytKEbX72fSN"];
+      const keyList = ["jm484k8iyF37DT5E51sWAr3v", "wYj4CmzTa1CJX2YVsCZdnsZq", "hz99DPWitBbRAgnjTrtG3rEF", "aGSQ7rF4TnnUeytKEbX72fSN"];
       const nobgKey = keyList[Math.floor(Math.random() * keyList.length)];
       const {
         mime
