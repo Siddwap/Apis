@@ -6,11 +6,11 @@ import fetch from "node-fetch";
 class DoodsScraper {
   constructor(options = {}) {
     this.proxyLink = options.proxyLink || "";
-    this.baseUrl = "https://d-s.io";
+    this.baseUrl = "https://dsvplay.com";
     this.headers = {
       Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
       "Accept-Encoding": "gzip, deflate, br, zstd",
-      Referer: "https://d-s.io/",
+      Referer: "https://dsvplay.com/",
       "User-Agent": options.userAgent || "Mozilla/5.0 (Linux; Android 10; Pixel 4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Mobile Safari/537.36"
     };
     this.logger = options.logger || console;

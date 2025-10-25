@@ -67,13 +67,14 @@ class Nekopoi {
         const link = $el.attr("href") || "";
         const id = this.extractId(link);
         const title = $el.text().trim();
-        const rel = $el.attr("rel");
         const tooltipInfo = this.extractTooltipInfo($el);
+        const image = $tooltip("img").attr("src") || "";
         if (id && title) {
           recommended.push({
             id: id,
             source: this.source,
             title: title,
+            coverImage: image,
             link: link,
             ...tooltipInfo
           });
@@ -219,6 +220,7 @@ class Nekopoi {
         const date = $el.find(".eroinfo span").first().text().trim() || "";
         const seriesLink = $el.find(".eroinfo span a").attr("href") || "";
         const series = $el.find(".eroinfo span a").text().trim() || "";
+        const seriesId = seriesLink ? this.extractId(seriesLink) : "";
         if (id) {
           items.push({
             id: id,
@@ -227,6 +229,7 @@ class Nekopoi {
             coverImage: image,
             date: date,
             series: series ? {
+              id: seriesId,
               title: series,
               link: seriesLink
             } : null,
@@ -271,7 +274,7 @@ class Nekopoi {
     try {
       console.log(`Searching: ${query}, page: ${page}`);
       const q = encodeURIComponent(query);
-      const url = page === 1 ? `${this.host}/?s=${q}&post_type=anime` : `${this.host}/search/${encodeURIComponent(query)}/page/${page}/`;
+      const url = page === 1 ? `${this.host}/?s=${q}&post_type=anime` : `${this.host}/search/${q}/page/${page}/`;
       const {
         data
       } = await axios.get(this.proxyUrl(url), {
@@ -400,6 +403,16 @@ class Nekopoi {
         });
       });
       const notes = $(".konten h3").text().trim() || "";
+      const resolutions = [];
+      if (notes) {
+        const resMatches = notes.match(/‘(\d+[pP](?:\/\d+[pP])?|Alternatif|Unknown)’/g) || [];
+        resMatches.forEach(match => {
+          resolutions.push(match.replace(/‘|’/g, "").trim());
+        });
+      }
+      if (resolutions.length === 0) {
+        resolutions.push("360p/480p", "720p", "Alternative");
+      }
       const streams = [];
       $("#show-stream .openstream").each((index, el) => {
         const $el = $(el);
@@ -407,7 +420,6 @@ class Nekopoi {
         const src = iframe.attr("src");
         const streamId = $el.attr("id");
         if (src) {
-          const resolutions = ["360p/480p", "720p", "Alternative"];
           streams.push({
             index: index + 1,
             id: streamId || `stream${index + 1}`,
@@ -526,6 +538,18 @@ class Nekopoi {
           };
         }
       });
+      const categories = [];
+      $("#menu-menu-1 li").each((_, li) => {
+        const $li = $(li);
+        const catLink = $li.find("a").attr("href") || "";
+        const catTitle = $li.find("a").text().trim();
+        if (catLink && catTitle && catLink.includes("/category/")) {
+          categories.push({
+            title: catTitle,
+            link: catLink
+          });
+        }
+      });
       console.log(`Fetched detail for: ${title}`);
       return {
         id: id,
@@ -541,7 +565,8 @@ class Nekopoi {
         related: related,
         similarSeries: similarSeries,
         recommended: recommended,
-        navigation: navigation
+        navigation: navigation,
+        categories: categories
       };
     } catch (err) {
       console.error("Error fetching detail:", err.message);
@@ -562,7 +587,8 @@ class Nekopoi {
         navigation: {
           prev: null,
           next: null
-        }
+        },
+        categories: []
       };
     }
   }

@@ -576,6 +576,7 @@ export default function handler(req, res) {
     { path: "/api/ai/percify", name: "Percify", params: [{ "name": "prompt", "in": "query", "required": false }], },
     { path: "/api/ai/chatgptfree", name: "Chatgptfree", params: [{ "name": "prompt", "in": "query", "required": false }], },
     { path: "/api/ai/genprompt", name: "Genprompt", params: [{ "name": "prompt", "in": "query", "required": false }], },
+    { path: "/api/ai/lipsync", name: "Lipsync", params: [{ "name": "prompt", "in": "query", "required": false }], },
     { path: "/api/ai/rubiks", name: "Rubiks", params: [{ "name": "prompt", "in": "query", "required": false }], },
     { path: "/api/ai/runner-ai", name: "Runner-ai", params: [{ "name": "prompt", "in": "query", "required": false }], },
     { path: "/api/ai/sara-study", name: "Sara-study", params: [{ "name": "prompt", "in": "query", "required": false }], },
