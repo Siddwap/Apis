@@ -12,40 +12,30 @@ import {
 import apiConfig from "@/configs/apiConfig";
 import SpoofHead from "@/lib/spoof-head";
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-
-function base64URLEncode(str) {
-  return str.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
-}
-
-function sha256(buffer) {
-  return createHash("sha256").update(buffer).digest();
-}
-async function logCookies(jar, url, label) {
-  try {
-    const cookies = await jar.getCookies(url);
-    console.log(`\n[COOKIES ${label}] URL: ${url}`);
-    if (cookies.length === 0) {
-      console.log("  - (Tidak ada cookie)");
-      return;
-    }
-    cookies.forEach(c => {
-      const valuePreview = c.value ? c.value.substring(0, 80) : "(null)";
-      const ellipsis = c.value && c.value.length > 80 ? "..." : "";
-      console.log(`  - ${c.key} = ${valuePreview}${ellipsis}`);
-    });
-  } catch (e) {
-    console.error(`[ERROR] Gagal membaca cookie untuk ${url}: ${e.message}`);
+const LOG = {
+  info: (msg, data = {}) => console.log(`[INFO] ${msg}`, data),
+  success: (msg, data = {}) => console.log(`[SUCCESS] ${msg}`, data),
+  warn: (msg, data = {}) => console.warn(`[WARN] ${msg}`, data),
+  error: (msg, error = null) => {
+    console.error(`[ERROR] ${msg}`, error ? {
+      message: error.message,
+      stack: error.stack
+    } : "");
+  },
+  debug: (msg, data = {}) => {
+    if (process.env.DEBUG === "true") console.log(`[DEBUG] ${msg}`, data);
   }
-}
+};
 class WudysoftAPI {
   constructor() {
     this.client = axios.create({
-      baseURL: `https://${apiConfig.DOMAIN_URL}/api`
+      baseURL: `https://${apiConfig.DOMAIN_URL}/api`,
+      timeout: 15e3
     });
   }
   async createEmail() {
     try {
-      console.log("[WUDYSOFT] Membuat email sementara...");
+      LOG.info("[WUDYSOFT] Membuat email sementara...");
       const response = await this.client.get("/mails/v9", {
         params: {
           action: "create"
@@ -53,16 +43,16 @@ class WudysoftAPI {
       });
       const email = response.data?.email;
       if (!email) throw new Error("Email tidak ditemukan di response");
-      console.log(`[SUCCESS] Email dibuat: ${email}`);
+      LOG.success(`Email dibuat: ${email}`);
       return email;
     } catch (error) {
-      console.error(`[ERROR] Gagal membuat email: ${error.response?.data || error.message}`);
+      LOG.error("[WUDYSOFT] Gagal buat email", error);
       throw error;
     }
   }
   async checkMessages(email) {
     try {
-      console.log(`[WUDYSOFT] Mengecek pesan untuk: ${email}`);
+      LOG.info(`Mengecek pesan untuk: ${email}`);
       const response = await this.client.get("/mails/v9", {
         params: {
           action: "message",
@@ -71,25 +61,25 @@ class WudysoftAPI {
       });
       const content = response.data?.data?.[0]?.text_content;
       if (!content) {
-        console.log(`[INFO] Belum ada pesan untuk ${email}`);
+        LOG.debug("Belum ada pesan");
         return null;
       }
       const match = content.match(/https:\/\/www\.imideo\.net\/api\/auth\/verify-email\?token=([a-z0-9\-]+)/);
       if (!match) {
-        console.log(`[INFO] Link verifikasi belum ada di pesan`);
+        LOG.debug("Link verifikasi belum ada");
         return null;
       }
       const link = `https://www.imideo.net/api/auth/verify-email?token=${match[1]}`;
-      console.log(`[SUCCESS] Link verifikasi ditemukan: ${link}`);
+      LOG.success(`Link verifikasi ditemukan: ${link.substring(0, 60)}...`);
       return link;
     } catch (error) {
-      console.error(`[ERROR] Gagal cek pesan untuk ${email}: ${error.message}`);
+      LOG.error(`Gagal cek pesan untuk ${email}`, error);
       return null;
     }
   }
   async createPaste(title, content) {
     try {
-      console.log(`[WUDYSOFT] Membuat paste: ${title}`);
+      LOG.info(`Membuat paste: ${title}`);
       const response = await this.client.get("/tools/paste/v1", {
         params: {
           action: "create",
@@ -99,16 +89,16 @@ class WudysoftAPI {
       });
       const key = response.data?.key;
       if (!key) throw new Error("Key paste tidak ditemukan");
-      console.log(`[SUCCESS] Paste dibuat. Key: ${key}`);
+      LOG.success(`Paste dibuat. Key: ${key}`);
       return key;
     } catch (error) {
-      console.error(`[ERROR] Gagal create paste: ${error.response?.data || error.message}`);
+      LOG.error("Gagal create paste", error);
       throw error;
     }
   }
   async getPaste(key) {
     try {
-      console.log(`[WUDYSOFT] Mengambil paste dengan key: ${key}`);
+      LOG.info(`Mengambil paste: ${key}`);
       const response = await this.client.get("/tools/paste/v1", {
         params: {
           action: "get",
@@ -116,11 +106,11 @@ class WudysoftAPI {
         }
       });
       const content = response.data?.content;
-      if (!content) throw new Error("Paste tidak ditemukan atau kosong");
-      console.log(`[SUCCESS] Paste berhasil diambil`);
+      if (!content) throw new Error("Paste kosong atau tidak ditemukan");
+      LOG.success("Paste berhasil diambil");
       return content;
     } catch (error) {
-      console.error(`[ERROR] Gagal get paste ${key}: ${error.response?.data || error.message}`);
+      LOG.warn(`Paste ${key} tidak ditemukan atau error`, error);
       return null;
     }
   }
@@ -129,6 +119,8 @@ class IMideoAPI {
   constructor() {
     this.cookieJar = new CookieJar();
     this.baseURL = "https://www.imideo.net/api";
+    this.csrfToken = null;
+    this.csrfExpiry = 0;
     const commonHeaders = {
       "accept-language": "id-ID",
       origin: "https://www.imideo.net",
@@ -143,6 +135,7 @@ class IMideoAPI {
       baseURL: this.baseURL,
       jar: this.cookieJar,
       withCredentials: true,
+      timeout: 2e4,
       headers: {
         ...commonHeaders,
         accept: "*/*",
@@ -152,112 +145,157 @@ class IMideoAPI {
         "sec-fetch-site": "same-origin"
       }
     }));
+    this.api.interceptors.request.use(async config => {
+      await sleep(800 + Math.random() * 700);
+      if (config.method === "post") {
+        try {
+          const token = await this._getCsrfToken();
+          config.data = {
+            ...config.data,
+            csrfToken: token
+          };
+        } catch (e) {
+          LOG.error("Gagal inject CSRF", e);
+        }
+      }
+      return config;
+    });
+    this.api.interceptors.response.use(res => res, async error => {
+      const status = error.response?.status;
+      const retryCount = error.config?.retryCount || 0;
+      if ((status === 429 || status >= 500) && retryCount < 3) {
+        const delay = 2e3 * (retryCount + 1);
+        LOG.warn(`Rate limit / error ${status} → retry #${retryCount + 1} setelah ${delay}ms`);
+        await sleep(delay);
+        error.config.retryCount = retryCount + 1;
+        return this.api(error.config);
+      }
+      return Promise.reject(error);
+    });
     this.wudysoft = new WudysoftAPI();
   }
   _random() {
     return Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
   }
+  async _getCsrfToken(force = false) {
+    const now = Date.now();
+    if (!force && this.csrfToken && now < this.csrfExpiry) {
+      return this.csrfToken;
+    }
+    try {
+      LOG.info("Mengambil CSRF token...");
+      await this.api.get("/auth/csrf");
+      const cookies = await this.cookieJar.getCookies("https://www.imideo.net");
+      const csrfCookie = cookies.find(c => c.key === "__Host-authjs.csrf-token");
+      if (!csrfCookie?.value) throw new Error("CSRF cookie tidak ada");
+      const parts = csrfCookie.value.split("|");
+      if (parts.length < 2) throw new Error("Format CSRF invalid");
+      this.csrfToken = parts[1];
+      this.csrfExpiry = now + 5 * 60 * 1e3;
+      LOG.success(`CSRF token valid hingga ${new Date(this.csrfExpiry).toLocaleTimeString()}`);
+      return this.csrfToken;
+    } catch (error) {
+      LOG.error("Gagal ambil CSRF", error);
+      throw error;
+    }
+  }
   async _downloadOrParseImage(imageInput) {
     try {
       let buffer;
       if (Buffer.isBuffer(imageInput)) {
-        console.log("[IMAGE] Input adalah Buffer");
+        LOG.debug("Input adalah Buffer");
         buffer = imageInput;
       } else if (typeof imageInput === "string") {
-        if (imageInput.startsWith("http://") || imageInput.startsWith("https://")) {
-          console.log(`[IMAGE] Mengunduh dari URL: ${imageInput.substring(0, 60)}...`);
-          const response = await axios.get(imageInput, {
+        if (imageInput.startsWith("http")) {
+          LOG.info(`Download gambar dari URL (${imageInput.substring(0, 50)}...)`);
+          const res = await axios.get(imageInput, {
             responseType: "arraybuffer",
             timeout: 15e3
           });
-          buffer = Buffer.from(response.data);
+          buffer = Buffer.from(res.data);
         } else if (imageInput.startsWith("data:image/")) {
-          console.log("[IMAGE] Parsing dari data:image base64");
+          LOG.debug("Parse base64 image");
           buffer = Buffer.from(imageInput.replace(/^data:image\/\w+;base64,/, ""), "base64");
         } else {
-          throw new Error("Format imageUrl tidak didukung. Gunakan: URL, data:image, atau Buffer");
+          throw new Error("Format gambar tidak didukung");
         }
       } else {
-        throw new Error("imageUrl harus string (URL/base64) atau Buffer");
+        throw new Error("imageUrl harus string atau Buffer");
       }
       if (!buffer || buffer.length === 0) throw new Error("Gambar kosong");
-      console.log(`[SUCCESS] Gambar berhasil diproses. Ukuran: ${(buffer.length / 1024).toFixed(2)} KB`);
+      LOG.success(`Gambar diproses: ${(buffer.length / 1024).toFixed(2)} KB`);
       return buffer;
     } catch (error) {
-      console.error(`[ERROR] Gagal memproses gambar: ${error.message}`);
+      LOG.error("Gagal proses gambar", error);
       throw error;
     }
   }
   async _uploadImage(buffer, fileName) {
     try {
-      console.log(`[UPLOAD] Mengunggah gambar: ${fileName}`);
+      LOG.info(`Upload gambar: ${fileName}`);
       const base64Data = `data:image/jpeg;base64,${buffer.toString("base64")}`;
       const payload = {
         base64Data: base64Data,
         fileName: fileName
       };
-      const response = await this.api.post("/upload-image", payload);
-      if (!response.data.success) throw new Error(response.data.message || "Upload gagal");
-      const url = response.data.data.downloadUrl;
-      console.log(`[SUCCESS] Upload berhasil: ${url}`);
-      return url;
+      const res = await this.api.post("/upload-image", payload);
+      if (!res.data.success) throw new Error(res.data.message || "Upload gagal");
+      LOG.success(`Upload sukses: ${res.data.data.downloadUrl.substring(0, 60)}...`);
+      return res.data.data.downloadUrl;
     } catch (error) {
-      console.error(`[ERROR] Upload gambar gagal: ${error.response?.data || error.message}`);
+      LOG.error("Upload gambar gagal", error);
       throw error;
     }
   }
   async _getSessionToken() {
     try {
       const cookies = await this.cookieJar.getCookies("https://www.imideo.net");
-      const sessionCookie = cookies.find(c => c.key === "__Secure-authjs.session-token");
-      if (!sessionCookie) {
-        console.warn("[WARNING] Session token tidak ditemukan di cookie");
-        return null;
-      }
-      console.log(`[SUCCESS] Session token ditemukan (panjang: ${sessionCookie.value.length})`);
-      return sessionCookie.value;
+      const token = cookies.find(c => c.key === "__Secure-authjs.session-token")?.value;
+      if (!token) LOG.warn("Session token tidak ditemukan");
+      else LOG.debug(`Session token: ${token.substring(0, 20)}...`);
+      return token || null;
     } catch (error) {
-      console.error(`[ERROR] Gagal membaca session token: ${error.message}`);
+      LOG.error("Gagal baca session token", error);
       return null;
     }
   }
   async _performRegistration() {
     try {
-      console.log("\n[IMIDEO] ====== MEMULAI REGISTRASI ======");
+      LOG.info("====== MEMULAI REGISTRASI BARU ======");
       const email = await this.wudysoft.createEmail();
       const nickname = `User${Date.now()}${this._random()}`;
       const password = `Pass${Date.now()}${this._random()}`;
-      console.log(`[IMIDEO] Mendaftar dengan email: ${email}, nickname: ${nickname}`);
+      LOG.info(`Signup → ${email} | ${nickname}`);
       await this.api.post("/auth/signup", {
         email: email,
         password: password,
         nickname: nickname
       });
-      console.log("[IMIDEO] Menunggu email verifikasi...");
+      LOG.info("Menunggu email verifikasi...");
       let verifyLink = null;
       for (let i = 0; i < 60; i++) {
         verifyLink = await this.wudysoft.checkMessages(email);
         if (verifyLink) break;
-        console.log(`[IMIDEO] Menunggu... (${i + 1}/60)`);
+        LOG.debug(`Tunggu... (${i + 1}/60)`);
         await sleep(3e3);
       }
       if (!verifyLink) throw new Error("Timeout: Link verifikasi tidak ditemukan");
-      console.log(`[IMIDEO] Mengakses link verifikasi: ${verifyLink}`);
+      LOG.info(`Verifikasi email...`);
       const verifyClient = wrapper(axios.create({
         jar: this.cookieJar
       }));
       await verifyClient.get(verifyLink, {
         maxRedirects: 10
       });
-      console.log("[IMIDEO] Validasi kredensial...");
+      LOG.info("Validasi kredensial...");
       await this.api.post("/auth/validate-credentials", {
         email: email,
         password: password
       });
       await this.api.get("/auth/session");
       const sessionToken = await this._getSessionToken();
-      if (!sessionToken) throw new Error("Session token tidak ditemukan setelah login");
-      console.log("[SUCCESS] Registrasi & login berhasil!");
+      if (!sessionToken) throw new Error("Session token hilang setelah login");
+      LOG.success("Registrasi & login berhasil!");
       return {
         email: email,
         password: password,
@@ -265,31 +303,32 @@ class IMideoAPI {
         sessionToken: sessionToken
       };
     } catch (error) {
-      console.error(`[ERROR] Registrasi gagal: ${error.message}`);
+      LOG.error("Registrasi gagal", error);
       throw error;
     }
   }
   async _ensureValidSession({
     key
-  }) {
+  } = {}) {
     let sessionData = null;
     let currentKey = key;
     try {
       if (key) {
-        console.log(`[SESSION] Memuat sesi dari key: ${key}`);
+        LOG.info(`Memuat sesi dari key: ${key}`);
         const saved = await this.wudysoft.getPaste(key);
         if (saved) {
           sessionData = JSON.parse(saved);
-          console.log(`[SUCCESS] Sesi berhasil dimuat dari key`);
+          await this.cookieJar.setCookie(`__Secure-authjs.session-token=${sessionData.sessionToken}; Domain=.imideo.net; Path=/; Secure; HttpOnly; SameSite=Lax`, "https://www.imideo.net");
+          LOG.success(`Sesi dimuat dari key: ${key}`);
         } else {
-          console.warn(`[WARNING] Key ${key} tidak ditemukan di Wudysoft`);
+          LOG.warn(`Key ${key} tidak ditemukan`);
         }
       }
     } catch (error) {
-      console.warn(`[WARNING] Gagal memuat sesi dari key: ${error.message}`);
+      LOG.warn("Gagal parse sesi dari key", error);
     }
-    if (!sessionData) {
-      console.log("[SESSION] Key tidak valid atau tidak ada → Membuat sesi baru");
+    if (!sessionData || !await this._getSessionToken()) {
+      LOG.info("Key tidak valid → buat sesi baru");
       const newSession = await this._performRegistration();
       const toSave = JSON.stringify({
         email: newSession.email,
@@ -298,14 +337,9 @@ class IMideoAPI {
       });
       currentKey = await this.wudysoft.createPaste(`imideo-session-${this._random()}`, toSave);
       sessionData = newSession;
-      console.log(`[SUCCESS] Sesi baru disimpan. Gunakan key: ${currentKey}`);
+      LOG.success(`Sesi baru disimpan. Key: ${currentKey}`);
     }
-    try {
-      await this.cookieJar.setCookie(`__Secure-authjs.session-token=${sessionData.sessionToken}; Domain=.imideo.net; Path=/; Secure; HttpOnly; SameSite=Lax`, "https://www.imideo.net");
-      console.log(`[SESSION] Cookie session token berhasil di-set`);
-    } catch (error) {
-      console.error(`[ERROR] Gagal set cookie: ${error.message}`);
-    }
+    await this._getCsrfToken(true);
     return {
       sessionData: sessionData,
       key: currentKey
@@ -313,38 +347,26 @@ class IMideoAPI {
   }
   async register() {
     try {
-      console.log("[ACTION] register → Memulai...");
+      LOG.info("ACTION: register");
       const {
         key,
         sessionData
       } = await this._ensureValidSession({});
-      console.log(`[SUCCESS] Registrasi selesai. Key: ${key}, Email: ${sessionData.email}`);
+      LOG.success(`Registrasi selesai. Email: ${sessionData.email} | Key: ${key}`);
       return {
         key: key,
         email: sessionData.email
       };
     } catch (error) {
-      console.error(`[ERROR] register gagal: ${error.message}`);
-      throw error;
-    }
-  }
-  async _queueVideo(payload) {
-    try {
-      console.log(`[VIDEO] Mengirim task ke queue...`);
-      const response = await this.api.post("/video-generation/queue-v2", payload);
-      if (!response.data.taskId) throw new Error("taskId tidak ada di response");
-      console.log(`[SUCCESS] Task berhasil dibuat: ${response.data.taskId}`);
-      return response.data;
-    } catch (error) {
-      console.error(`[ERROR] Queue video gagal: ${error.response?.data || error.message}`);
+      LOG.error("register gagal", error);
       throw error;
     }
   }
   async txt2vid(params) {
     try {
-      console.log(`[ACTION] txt2vid → Prompt: "${params.prompt.substring(0, 60)}..."`);
+      LOG.info(`ACTION: txt2vid → "${params.prompt.substring(0, 50)}..."`);
       const {
-        key: currentKey
+        key
       } = await this._ensureValidSession({
         key: params.key
       });
@@ -358,31 +380,32 @@ class IMideoAPI {
         modelType: params.model || "wan-video",
         requiredCredits: 4
       };
-      const task = await this._queueVideo(payload);
-      console.log(`[SUCCESS] txt2vid berhasil. taskId: ${task.taskId}`);
+      const res = await this.api.post("/video-generation/queue-v2", payload);
+      if (!res.data.taskId) throw new Error("taskId tidak ada");
+      LOG.success(`Task dibuat: ${res.data.taskId}`);
       return {
-        ...task,
-        key: currentKey
+        ...res.data,
+        key: key
       };
     } catch (error) {
-      console.error(`[ERROR] txt2vid gagal: ${error.message}`);
+      LOG.error("txt2vid gagal", error);
       throw error;
     }
   }
   async img2vid(params) {
     try {
-      console.log(`[ACTION] img2vid → Prompt: "${params.prompt.substring(0, 60)}..."`);
+      LOG.info(`ACTION: img2vid → "${params.prompt.substring(0, 40)}..."`);
       const {
-        key: currentKey
+        key
       } = await this._ensureValidSession({
         key: params.key
       });
-      const imageBuffer = await this._downloadOrParseImage(params.imageUrl);
-      const fileName = `upload-start-${Date.now()}-edited-image-${this._random()}.jpg`;
-      const uploadedImageUrl = await this._uploadImage(imageBuffer, fileName);
+      const buffer = await this._downloadOrParseImage(params.imageUrl);
+      const fileName = `img-${Date.now()}-${this._random()}.jpg`;
+      const uploadedUrl = await this._uploadImage(buffer, fileName);
       const payload = {
         prompt: params.prompt,
-        image: uploadedImageUrl,
+        image: uploadedUrl,
         imageUploadMode: params.imageUploadMode || "start",
         videoMode: "image-to-video",
         aspectRatio: params.aspectRatio || "9:16",
@@ -392,105 +415,111 @@ class IMideoAPI {
         modelType: params.model || "wan-video",
         requiredCredits: 4
       };
-      const task = await this._queueVideo(payload);
-      console.log(`[SUCCESS] img2vid berhasil. taskId: ${task.taskId}`);
+      const res = await this.api.post("/video-generation/queue-v2", payload);
+      if (!res.data.taskId) throw new Error("taskId tidak ada");
+      LOG.success(`img2vid task: ${res.data.taskId}`);
       return {
-        ...task,
-        key: currentKey
+        ...res.data,
+        key: key
       };
     } catch (error) {
-      console.error(`[ERROR] img2vid gagal: ${error.message}`);
+      LOG.error("img2vid gagal", error);
       throw error;
     }
   }
   async status(params) {
     try {
-      console.log(`[ACTION] status → task_id: ${params.task_id}`);
+      LOG.info(`ACTION: status → task_id: ${params.task_id}`);
       const {
-        key: currentKey
+        key
       } = await this._ensureValidSession({
         key: params.key
       });
-      const response = await this.api.get(`/video-generation/progress/${params.task_id}`);
-      console.log(`[SUCCESS] Status: ${response.data.status || "unknown"}`);
+      const res = await this.api.get(`/video-generation/progress/${params.task_id}`);
+      LOG.success(`Status: ${res.data.status || "unknown"}`);
       return {
-        ...response.data,
-        key: currentKey
+        ...res.data,
+        key: key
       };
     } catch (error) {
-      console.error(`[ERROR] status gagal: ${error.response?.data || error.message}`);
+      LOG.error("status gagal", error);
       throw error;
     }
   }
   async credits(params) {
     try {
-      console.log(`[ACTION] credits → Mengecek kredit...`);
+      LOG.info("ACTION: credits → cek kredit");
       const {
-        key: currentKey
+        key
       } = await this._ensureValidSession({
         key: params.key
       });
-      const response = await this.api.get("/user/credits");
-      const credits = response.data.data.credits;
-      console.log(`[SUCCESS] Kredit tersisa: ${credits}`);
+      const res = await this.api.get("/user/credits");
+      LOG.success(`Kredit tersisa: ${res.data.data.credits}`);
       return {
-        ...response.data.data,
-        key: currentKey
+        ...res.data.data,
+        key: key
       };
     } catch (error) {
-      console.error(`[ERROR] credits gagal: ${error.response?.data || error.message}`);
+      LOG.error("credits gagal", error);
       throw error;
     }
   }
 }
 export default async function handler(req, res) {
+  res.setHeader("Cache-Control", "no-store");
   const {
     action,
     ...params
   } = req.method === "GET" ? req.query : req.body;
   if (!action) {
+    LOG.warn("Request tanpa action");
     return res.status(400).json({
       error: "Parameter 'action' wajib diisi."
     });
   }
   const api = new IMideoAPI();
   try {
-    let response;
+    let result;
     switch (action) {
       case "register":
-        response = await api.register();
+        result = await api.register();
         break;
       case "txt2vid":
         if (!params.prompt) return res.status(400).json({
           error: "prompt wajib"
         });
-        response = await api.txt2vid(params);
+        result = await api.txt2vid(params);
         break;
       case "img2vid":
         if (!params.imageUrl || !params.prompt) return res.status(400).json({
           error: "imageUrl & prompt wajib"
         });
-        response = await api.img2vid(params);
+        result = await api.img2vid(params);
         break;
       case "status":
         if (!params.task_id) return res.status(400).json({
           error: "task_id wajib"
         });
-        response = await api.status(params);
+        result = await api.status(params);
         break;
       case "credits":
-        response = await api.credits(params);
+        result = await api.credits(params);
         break;
       default:
+        LOG.warn(`Action tidak dikenali: ${action}`);
         return res.status(400).json({
           error: `Action tidak valid: ${action}. Gunakan: register, txt2vid, img2vid, status, credits`
         });
     }
-    res.status(200).json(response);
+    LOG.success(`Action ${action} selesai`);
+    return res.status(200).json(result);
   } catch (error) {
-    console.error(`[FATAL] Action '${action}' gagal: ${error.message}`);
-    res.status(500).json({
-      error: error.message
+    const status = error.response?.status || 500;
+    const message = error.response?.data?.message || error.message || "Internal server error";
+    LOG.error(`FATAL: ${action} → ${message}`, error);
+    return res.status(status).json({
+      error: message
     });
   }
 }
