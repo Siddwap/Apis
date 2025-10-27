@@ -84,6 +84,7 @@ export class ExsiteAI {
     this.csrfToken = null;
     this.socketId = null;
     this.sessionKey = null;
+    this.userData = null;
     this.wudysoft = new WudysoftAPI();
   }
   log = console.log;
@@ -175,7 +176,7 @@ export class ExsiteAI {
     };
   }
   async ensureKey(key) {
-    if (this.sessionKey) return this.sessionKey;
+    if (this.sessionKey && this.csrfToken) return this.sessionKey;
     if (!key) throw new Error("Key required. Use register() or loadSessionKey()");
     await this.loadSessionKey(key);
     return this.sessionKey;
@@ -203,13 +204,24 @@ export class ExsiteAI {
         headers: h
       });
       this.log("[REGISTER] Success");
-      this.sessionKey = await this.wudysoft.createPaste(`exsite_${this.r()}`, JSON.stringify({
+      await this.dash();
+      const sessionData = {
+        user: {
+          email: email,
+          pass: pass,
+          name: name
+        },
+        csrfToken: this.csrfToken,
+        socketId: this.socketId,
+        cookieJar: this.jar.toJSON()
+      };
+      this.sessionKey = await this.wudysoft.createPaste(`exsite_${this.r()}`, JSON.stringify(sessionData));
+      this.userData = {
         email: email,
         pass: pass,
         name: name
-      }));
+      };
       this.log("[REGISTER] Session saved → key:", this.sessionKey);
-      await this.dash();
       return {
         key: this.sessionKey,
         email: email,
@@ -225,11 +237,21 @@ export class ExsiteAI {
       this.log("[LOAD] Loading key:", key);
       const raw = await this.wudysoft.getPaste(key);
       if (!raw) throw new Error("Key not found");
+      const data = JSON.parse(raw);
       this.sessionKey = key;
+      this.userData = data.user;
+      this.csrfToken = data.csrfToken;
+      this.socketId = data.socketId;
+      this.jar = CookieJar.fromJSON(JSON.stringify(data.cookieJar));
+      this.client = wrapper(axios.create({
+        jar: this.jar,
+        timeout: 3e4
+      }));
       await this.dash();
-      this.log("[LOAD] Loaded");
+      this.log("[LOAD] Session restored");
       return {
-        key: key
+        key: key,
+        email: this.userData.email
       };
     } catch (err) {
       this.error("[LOAD] Failed →", err.message);
@@ -281,7 +303,7 @@ export class ExsiteAI {
         "x-csrf-token": this.csrfToken,
         "x-socket-id": this.socketId || "x"
       };
-      this.log(`[GEN] ${isImg ? "img2img" : "txt2img"} → model: ${model}, prompt: "${prompt}"`);
+      this.log(`[GEN] ${isImg ? "img2img" : "txt2img"} → ${model}`);
       const res = await this.client.post(`${this.base}/dashboard/user/openai/generate`, form.getBuffer(), {
         headers: h
       });
@@ -306,7 +328,7 @@ export class ExsiteAI {
         "x-csrf-token": this.csrfToken,
         "x-socket-id": this.socketId || "x"
       };
-      this.log(`[LAZYLOAD] Fetching offset: ${offset}`);
+      this.log(`[LAZYLOAD] offset: ${offset}`);
       const res = await this.client.get(`${this.base}/dashboard/user/openai/generate/lazyload`, {
         headers: h,
         params: {
@@ -334,7 +356,12 @@ export class ExsiteAI {
     key
   }) {
     const ok = await this.wudysoft.deletePaste(key);
-    if (this.sessionKey === key) this.sessionKey = null;
+    if (this.sessionKey === key) {
+      this.sessionKey = null;
+      this.csrfToken = null;
+      this.socketId = null;
+      this.userData = null;
+    }
     return {
       success: ok,
       key: key
@@ -346,8 +373,10 @@ export class ExsiteAI {
         headers: this.headers()
       });
       const html = res.data;
-      this.csrfToken = html.match(/name="csrf-token" content="([^"]+)"/)?.[1] || this.csrfToken;
-      this.socketId = html.match(/"socketId":"([^"]+)"/)?.[1] || this.socketId;
+      const newCsrf = html.match(/name="csrf-token" content="([^"]+)"/)?.[1];
+      const newSocket = html.match(/"socketId":"([^"]+)"/)?.[1];
+      if (newCsrf) this.csrfToken = newCsrf;
+      if (newSocket) this.socketId = newSocket;
     } catch (err) {
       this.error("[DASH] Failed →", err.message);
     }

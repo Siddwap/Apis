@@ -98,48 +98,21 @@ class LipSync {
   getAvailableTypes() {
     return Object.keys(this.config.endpoints);
   }
-  async enc({
-    job_id,
-    type
-  }) {
-    if (!job_id || !type) {
-      throw new Error("enc: job_id and type are required");
-    }
-    try {
-      const {
-        uuid
-      } = await Encoder.enc({
-        data: {
-          job_id: job_id,
-          type: type
-        },
-        method: "combined"
-      });
-      console.log(`[enc] ${job_id} → ${uuid}`);
-      return uuid;
-    } catch (e) {
-      console.log("[enc] fail:", e.message);
-      throw e;
-    }
+  async enc(data) {
+    const {
+      uuid: jsonUuid
+    } = await Encoder.enc({
+      data: data,
+      method: "combined"
+    });
+    return jsonUuid;
   }
-  async dec(task_id) {
-    if (!task_id) {
-      throw new Error("dec: task_id is required");
-    }
-    try {
-      const {
-        text
-      } = await Encoder.dec({
-        uuid: task_id,
-        method: "combined"
-      });
-      const data = JSON.parse(text);
-      console.log(`[dec] ${task_id} → ${data.job_id}`);
-      return data;
-    } catch (e) {
-      console.log("[dec] fail:", e.message);
-      throw e;
-    }
+  async dec(uuid) {
+    const decryptedJson = await Encoder.dec({
+      uuid: uuid,
+      method: "combined"
+    });
+    return decryptedJson.text;
   }
   async generate({
     type,
