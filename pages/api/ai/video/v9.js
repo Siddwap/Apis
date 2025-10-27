@@ -14,8 +14,8 @@ class RTLIT {
       "accept-language": "id-ID,id;q=0.9",
       ...SpoofHead()
     };
-    this.uploadId = Math.random().toString(36).slice(2);
-    this.sessionHash = "s" + Math.random().toString(36).slice(2);
+    this.uploadId = "up" + Math.random().toString(36).slice(2);
+    this.sessionHash = "hash" + Math.random().toString(36).slice(2);
   }
   async enc(data) {
     const {

@@ -40,7 +40,7 @@ class CaptchaSolver {
           }
         });
         const token = response.data?.solution_token;
-        if (response.data?.ok && token) {
+        if (token) {
           return {
             token: token,
             ver: ver,
@@ -65,7 +65,7 @@ class CaptchaSolver {
           }
         });
         const token = response.data?.data?.result?.token;
-        if (response.data?.success && token) {
+        if (token) {
           return {
             token: token,
             ver: ver,
