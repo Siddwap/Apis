@@ -2,12 +2,12 @@ import axios from "axios";
 import OSS from "ali-oss";
 import SpoofHead from "@/lib/spoof-head";
 import PROMPT from "@/configs/ai-prompt";
-class NoteGPT {
+class VisualGPT {
   constructor() {
-    this.baseURL = "https://notegpt.io";
+    this.baseURL = "https://visualgpt.io";
     this.stsToken = null;
     this.anonId = this.genAnonId();
-    console.log("🔧 NoteGPT ready, anon id:", this.anonId);
+    console.log("🔧 VisualGPT ready, anon id:", this.anonId);
   }
   genAnonId() {
     const hex = () => Math.floor((1 + Math.random()) * 65536).toString(16).substring(1);
@@ -24,9 +24,8 @@ class NoteGPT {
       pragma: "no-cache",
       priority: "u=1, i",
       cookie: this.getCookie(),
-      origin: this.baseURL,
-      referer: `${this.baseURL}/ai-image-editor?s=$`,
-      "sec-ch-ua": '"Chromium";v="127", "Not)A;Brand";v="99", "Microsoft Edge Simulate";v="127", "Lemur";v="127"',
+      referer: `${this.baseURL}/ai-image-editor`,
+      "sec-ch-ua": '"Chromium";v="127", "Not)A;Brand";v="99", "Microsoft Edge Simulate";v="127"',
       "sec-ch-ua-mobile": "?1",
       "sec-ch-ua-platform": '"Android"',
       "sec-fetch-dest": "empty",
@@ -38,26 +37,25 @@ class NoteGPT {
   }
   async getSTSToken() {
     try {
-      console.log("🔑 Mendapatkan STS Token...");
+      console.log("🔑 Getting STS Token...");
       const {
         data
       } = await axios.get(`${this.baseURL}/api/v1/oss/sts-token`, {
         headers: this.getHeaders()
       });
       const token = data?.data;
-      if (!token?.AccessKeyId) throw new Error("Token STS tidak valid dari respons API: " + JSON.stringify(data));
+      if (!token?.AccessKeyId) throw new Error("Invalid STS token from API response: " + JSON.stringify(data));
       this.stsToken = token;
-      console.log("✅ STS Token diperoleh");
+      console.log("✅ STS Token obtained");
       return token;
     } catch (e) {
-      console.error("❌ Kesalahan STS Token:", e.message);
+      console.error("❌ STS Token error:", e.message);
       throw e;
     }
   }
   async uploadImage(input) {
     try {
-      if (!this.stsToken || new Date(this.stsToken.Expiration) < new Date()) {
-        console.log("Token STS tidak ada atau kedaluwarsa. Memperoleh yang baru.");
+      if (!this.stsToken) {
         await this.getSTSToken();
       }
       const store = new OSS({
@@ -68,7 +66,7 @@ class NoteGPT {
         endpoint: "oss-us-west-1.aliyuncs.com",
         secure: true
       });
-      const objectName = `notegpt/web3in1/${Date.now()}-${Math.random().toString(36).slice(2)}.jpeg`;
+      const objectName = `visualgpt/user-upload/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
       let buf, contentType = "image/jpeg";
       if (typeof input === "string" && input.startsWith("http")) {
         const res = await axios.get(input, {
@@ -89,12 +87,12 @@ class NoteGPT {
           "Content-Type": contentType
         }
       });
-      const cdnUrl = `https://cdn.notegpt.io/${result.name}`;
-      console.log("📤 Diunggah melalui ali-oss .put():", cdnUrl);
+      const cdnUrl = `https://cdn.visualgpt.io/${result.name}`;
+      console.log("📤 Uploaded via ali-oss .put():", cdnUrl);
       return cdnUrl;
     } catch (e) {
       const errorMessage = e.response ? JSON.stringify(e.response.data) : e.message;
-      console.error("❌ Kesalahan unggah:", errorMessage, e);
+      console.error("❌ Upload error:", errorMessage, e);
       throw e;
     }
   }
@@ -105,22 +103,27 @@ class NoteGPT {
     ...opt
   }) {
     try {
-      let uploadedUrl = null;
+      const urls = [];
       if (imageUrl) {
-        uploadedUrl = await this.uploadImage(Array.isArray(imageUrl) ? imageUrl[0] : imageUrl);
+        const imageInputs = Array.isArray(imageUrl) ? imageUrl : [imageUrl];
+        for (const img of imageInputs) {
+          const uploadedUrl = await this.uploadImage(img);
+          urls.push(uploadedUrl);
+        }
       }
       const payload = {
-        image_url: uploadedUrl,
-        type: 60,
+        image_urls: urls,
+        type: 61,
         user_prompt: prompt || PROMPT.text,
         sub_type: sub_type,
         aspect_ratio: opt.aspect_ratio || "match_input_image",
-        num: opt.num || 1,
-        model: opt.model || ""
+        num: opt.num || (sub_type === 1 ? 1 : ""),
+        max_images: opt.max_images || 1,
+        size: opt.size || ""
       };
       const {
         data
-      } = await axios.post(`${this.baseURL}/api/v2/images/handle`, payload, {
+      } = await axios.post(`${this.baseURL}/api/v1/prediction/handle`, payload, {
         headers: {
           ...this.getHeaders(),
           "content-type": "application/json; charset=UTF-8"
@@ -128,14 +131,14 @@ class NoteGPT {
       });
       const sid = data?.data?.session_id;
       if (!sid) {
-        console.error("Kesalahan respons pembuatan tugas:", data);
-        throw new Error("Tidak ada session id yang dikembalikan dari server.");
+        console.error("Create task response error:", data);
+        throw new Error("No session id returned from server.");
       }
-      console.log("🆔 Tugas dibuat:", sid);
+      console.log("🆔 Created:", sid);
       return sid;
     } catch (e) {
       const errorMessage = e.response ? JSON.stringify(e.response.data) : e.message;
-      console.error("❌ Kesalahan pembuatan tugas:", errorMessage, e);
+      console.error("❌ Create task error:", errorMessage, e);
       throw e;
     }
   }
@@ -146,59 +149,57 @@ class NoteGPT {
       try {
         const {
           data
-        } = await axios.get(`${this.baseURL}/api/v2/images/status?session_id=${sid}`, {
+        } = await axios.get(`${this.baseURL}/api/v1/prediction/get-status?session_id=${sid}`, {
           headers: this.getHeaders()
         });
         const s = data?.data?.status;
         if (s === "succeeded") {
           const urls = data?.data?.results || [];
-          console.log("✅ Selesai:", urls);
+          console.log("✅ Done:", urls);
           return urls;
         } else if (s === "failed") {
-          console.error("Respons generasi gagal:", data);
-          throw new Error("Generasi gagal di server.");
+          console.error("Generation failed response:", data);
+          throw new Error("Generation failed on the server.");
         }
         console.log("⏳ Status:", s);
         await new Promise(r => setTimeout(r, ms));
       } catch (e) {
-        console.warn("⚠️ Kesalahan poll:", e.message);
+        console.warn("⚠️ Poll error:", e.message);
         await new Promise(r => setTimeout(r, ms));
       }
     }
-    throw new Error("Timeout saat polling untuk hasil tugas.");
+    throw new Error("Timeout while polling for task result.");
   }
-  async getRemainingTimes(sub_type) {
+  async getRemainingTimes() {
     try {
       const {
         data
-      } = await axios.get(`${this.baseURL}/api/v2/images/left-times?type=60&sub_type=${sub_type}`, {
+      } = await axios.get(`${this.baseURL}/api/v1/diagram/left-times?type=60`, {
         headers: this.getHeaders()
       });
       const n = data?.data?.times_left ?? 0;
-      console.log("🧮 Sisa percobaan:", n);
+      console.log("🧮 Remaining:", n);
       return n;
     } catch (e) {
-      console.error("❌ Pemeriksaan sisa percobaan gagal:", e.message);
+      console.error("❌ Remaining check failed:", e.message);
       return 0;
     }
   }
   async generate({
     prompt,
     imageUrl,
-    sub_type = 3,
+    sub_type,
     ...rest
   }) {
-    console.log("🚀 Memulai generasi...");
-    if (sub_type === undefined) {
-      throw new Error("Parameter 'sub_type' diperlukan.");
-    }
-    console.log(`ℹ️ Menggunakan sub_type: ${sub_type}`);
-    const t = await this.getRemainingTimes(sub_type);
-    if (t <= 0) throw new Error("Sisa percobaan habis.");
+    console.log("🚀 Start generation...");
+    const effective_sub_type = sub_type !== undefined ? sub_type : imageUrl ? 2 : 3;
+    console.log(`ℹ️ Using sub_type: ${effective_sub_type}`);
+    const t = await this.getRemainingTimes();
+    if (t <= 0) throw new Error("No remaining times");
     const sid = await this.createTask({
       prompt: prompt,
       imageUrl: imageUrl,
-      sub_type: sub_type,
+      sub_type: effective_sub_type,
       ...rest
     });
     const res = await this.pollTask(sid);
@@ -207,13 +208,13 @@ class NoteGPT {
 }
 export default async function handler(req, res) {
   const params = req.method === "GET" ? req.query : req.body;
-  if (!params.imageUrl) {
+  if (!params.prompt) {
     return res.status(400).json({
-      error: "imageUrl are required"
+      error: "Prompt are required"
     });
   }
   try {
-    const api = new NoteGPT();
+    const api = new VisualGPT();
     const response = await api.generate(params);
     return res.status(200).json(response);
   } catch (error) {

@@ -11,37 +11,284 @@ import {
 } from "crypto";
 import apiConfig from "@/configs/apiConfig";
 import SpoofHead from "@/lib/spoof-head";
-import PROMPT from "@/configs/ai-prompt";
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-
-function base64URLEncode(str) {
-  return str.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
-}
-
-function sha256(buffer) {
-  return createHash("sha256").update(buffer).digest();
-}
-async function logCookies(jar, url, label) {
-  try {
-    const cookies = await jar.getCookies(url);
-    console.log(`\n[COOKIES ${label}] URL: ${url}`);
-    if (cookies.length === 0) {
-      console.log("  - (Tidak ada cookie)");
-      return;
-    }
-    cookies.forEach(c => {
-      const valuePreview = c.value ? c.value.substring(0, 80) : "(null)";
-      const ellipsis = c.value && c.value.length > 80 ? "..." : "";
-      console.log(`  - ${c.key} = ${valuePreview}${ellipsis}`);
-    });
-  } catch (e) {
-    console.error(`Gagal membaca cookie untuk ${url}: ${e.message}`);
+const AVAILABLE_MODELS = [{
+  model: "veo3.1",
+  supportTypes: ["TEXT_TO_VIDEO", "IMAGE_TO_VIDEO"],
+  images: {
+    max: 2,
+    min: 2
+  },
+  prompt: {
+    max: 2e3
+  },
+  durations: {
+    options: [{
+      value: "8"
+    }]
+  },
+  aspectRatios: {
+    options: [{
+      value: "16:9"
+    }, {
+      value: "9:16"
+    }]
+  },
+  resolutions: {
+    options: [{
+      value: "720p"
+    }]
   }
+}, {
+  model: "sora-2",
+  supportTypes: ["TEXT_TO_VIDEO", "IMAGE_TO_VIDEO"],
+  images: {
+    max: 1,
+    min: 1
+  },
+  prompt: {
+    max: 2e3
+  },
+  durations: {
+    options: [{
+      value: "10"
+    }, {
+      value: "15"
+    }]
+  },
+  aspectRatios: {
+    options: [{
+      value: "16:9"
+    }, {
+      value: "9:16"
+    }]
+  },
+  resolutions: {
+    options: [{
+      value: "720p"
+    }]
+  }
+}, {
+  model: "sora-2-pro",
+  supportTypes: ["TEXT_TO_VIDEO", "IMAGE_TO_VIDEO"],
+  images: {
+    max: 1,
+    min: 1
+  },
+  prompt: {
+    max: 2e3
+  },
+  durations: {
+    options: [{
+      value: "15"
+    }, {
+      value: "25"
+    }]
+  },
+  aspectRatios: {
+    options: [{
+      value: "16:9"
+    }, {
+      value: "9:16"
+    }]
+  },
+  resolutions: {
+    options: [{
+      value: "1080p"
+    }]
+  }
+}, {
+  model: "veo3",
+  supportTypes: ["TEXT_TO_VIDEO", "IMAGE_TO_VIDEO"],
+  images: {
+    max: 1,
+    min: 1
+  },
+  prompt: {
+    max: 2e3
+  },
+  durations: {
+    options: [{
+      value: "8"
+    }]
+  },
+  aspectRatios: {
+    options: [{
+      value: "16:9"
+    }, {
+      value: "9:16"
+    }]
+  },
+  resolutions: {
+    options: [{
+      value: "720p"
+    }]
+  }
+}, {
+  model: "seedance-1-pro",
+  supportTypes: ["TEXT_TO_VIDEO", "IMAGE_TO_VIDEO"],
+  images: {
+    max: 1,
+    min: 1
+  },
+  prompt: {
+    max: 2e3
+  },
+  durations: {
+    options: [{
+      value: "5"
+    }]
+  },
+  aspectRatios: {
+    options: [{
+      value: "adaptive"
+    }, {
+      value: "1:1"
+    }, {
+      value: "4:3"
+    }, {
+      value: "3:4"
+    }, {
+      value: "16:9"
+    }, {
+      value: "9:16"
+    }]
+  },
+  resolutions: {
+    options: [{
+      value: "1080p"
+    }]
+  }
+}, {
+  model: "gemini-2.5-flash-image",
+  supportTypes: ["TEXT_TO_IMAGE", "IMAGE_TO_IMAGE"],
+  images: {
+    max: 1,
+    min: 5
+  },
+  prompt: {
+    max: 1e3
+  },
+  aspectRatios: {
+    options: [{
+      value: "auto"
+    }, {
+      value: "1:1"
+    }, {
+      value: "4:3"
+    }, {
+      value: "3:4"
+    }, {
+      value: "3:2"
+    }, {
+      value: "2:3"
+    }, {
+      value: "16:9"
+    }, {
+      value: "9:16"
+    }]
+  }
+}, {
+  model: "seedream-4",
+  supportTypes: ["TEXT_TO_IMAGE", "IMAGE_TO_IMAGE"],
+  images: {
+    max: 1,
+    min: 5
+  },
+  prompt: {
+    max: 1e3
+  },
+  aspectRatios: {
+    options: [{
+      value: "1:1"
+    }, {
+      value: "4:3"
+    }, {
+      value: "3:4"
+    }, {
+      value: "3:2"
+    }, {
+      value: "2:3"
+    }, {
+      value: "16:9"
+    }, {
+      value: "9:16"
+    }]
+  }
+}, {
+  model: "flux-kontext-pro",
+  supportTypes: ["TEXT_TO_IMAGE", "IMAGE_TO_IMAGE"],
+  images: {
+    max: 1,
+    min: 5
+  },
+  prompt: {
+    max: 1e3
+  },
+  aspectRatios: {
+    options: [{
+      value: "1:1"
+    }, {
+      value: "4:3"
+    }, {
+      value: "3:4"
+    }, {
+      value: "3:2"
+    }, {
+      value: "2:3"
+    }, {
+      value: "16:9"
+    }, {
+      value: "9:16"
+    }]
+  }
+}, {
+  model: "gpt-image-1",
+  supportTypes: ["TEXT_TO_IMAGE", "IMAGE_TO_IMAGE"],
+  images: {
+    max: 1,
+    min: 5
+  },
+  prompt: {
+    max: 1e3
+  },
+  aspectRatios: {
+    options: [{
+      value: "1:1"
+    }, {
+      value: "3:2"
+    }, {
+      value: "2:3"
+    }]
+  }
+}];
+
+function findModel(model, type = null) {
+  return AVAILABLE_MODELS.find(s => s.model === model && (!type || s.supportTypes.includes(type)));
+}
+
+function getDefaultConfig(model, type) {
+  const modelData = findModel(model, type);
+  if (!modelData) {
+    throw Error(`Model ${model} not found`);
+  }
+  return {
+    model: model,
+    type: type,
+    prompt: "",
+    aspectRatio: modelData.aspectRatios.default || modelData.aspectRatios.options?.[0]?.value,
+    duration: modelData.durations?.default || modelData.durations?.options?.[0]?.value,
+    resolution: modelData.resolutions?.default || modelData.resolutions?.options?.[0]?.value,
+    imageUsage: modelData.images?.options?.[0]?.value,
+    number: 1
+  };
 }
 class WudysoftAPI {
   constructor() {
     this.client = axios.create({
-      baseURL: `https://${apiConfig.DOMAIN_URL}/api`
+      baseURL: `https://${apiConfig.DOMAIN_URL}/api`,
+      timeout: 3e4,
+      maxRedirects: 5
     });
   }
   async createEmail() {
@@ -151,18 +398,6 @@ class ShotAIAPI {
         },
         upload: "/upload/image",
         userGenerations: "/user/generations"
-      },
-      models: {
-        "gemini-2.5-flash-image": {
-          type: "IMAGE_TO_IMAGE",
-          aspectRatio: "auto"
-        },
-        "sora-2": {
-          type: "IMAGE_TO_VIDEO",
-          aspectRatio: "16:9",
-          duration: "10",
-          resolution: "720p"
-        }
       }
     };
     const commonHeaders = {
@@ -185,6 +420,10 @@ class ShotAIAPI {
       baseURL: this.config.endpoints.base,
       jar: this.cookieJar,
       withCredentials: true,
+      maxRedirects: 5,
+      validateStatus: function(status) {
+        return status >= 200 && status < 400;
+      },
       headers: {
         ...commonHeaders,
         accept: "*/*",
@@ -195,6 +434,36 @@ class ShotAIAPI {
   }
   _random() {
     return Math.random().toString(36).substring(2, 12);
+  }
+  _validateModel(model, type = null) {
+    const modelData = findModel(model, type);
+    if (!modelData) {
+      const availableModels = AVAILABLE_MODELS.filter(m => !type || m.supportTypes.includes(type)).map(m => ({
+        model: m.model,
+        supportTypes: m.supportTypes,
+        maxImages: m.images.max,
+        minImages: m.images.min,
+        aspectRatios: m.aspectRatios.options.map(opt => opt.value),
+        durations: m.durations?.options?.map(opt => opt.value) || [],
+        resolutions: m.resolutions?.options?.map(opt => opt.value) || []
+      }));
+      throw {
+        error: `Model '${model}' tidak ditemukan${type ? ` untuk tipe '${type}'` : ""}`,
+        availableModels: availableModels
+      };
+    }
+    return modelData;
+  }
+  getAvailableModels(type = null) {
+    return AVAILABLE_MODELS.filter(model => !type || model.supportTypes.includes(type)).map(model => ({
+      model: model.model,
+      supportTypes: model.supportTypes,
+      maxImages: model.images.max,
+      minImages: model.images.min,
+      aspectRatios: model.aspectRatios.options.map(opt => opt.value),
+      durations: model.durations?.options?.map(opt => opt.value) || [],
+      resolutions: model.resolutions?.options?.map(opt => opt.value) || []
+    }));
   }
   async _getTokenFromKey(key) {
     console.log(`Proses: Memuat sesi dari kunci: ${key}`);
@@ -207,6 +476,45 @@ class ShotAIAPI {
       return sessionData;
     } catch (e) {
       throw new Error(`Gagal memuat sesi: ${e.message}`);
+    }
+  }
+  async _verifyAndFollowRedirects(response, operation) {
+    if ([301, 302, 303, 307, 308].includes(response.status)) {
+      console.log(`Proses: Mengikuti redirect untuk ${operation}...`);
+      const redirectUrl = response.headers.location;
+      if (redirectUrl) {
+        return await this.api.get(redirectUrl);
+      }
+    }
+    return response;
+  }
+  async _ensureLogin(sessionData) {
+    try {
+      console.log("Proses: Memastikan login valid...");
+      await this.cookieJar.setCookie(`__Secure-better-auth.session_token=${sessionData.session.token}; Domain=.shotai.app; Path=/; Secure; SameSite=Lax`, "https://shotai.app");
+      const sessionResponse = await this.api.get(this.config.endpoints.auth.getSession);
+      if (sessionResponse.data?.session?.token) {
+        console.log("Proses: Session valid, login terkonfirmasi");
+        return true;
+      }
+      console.log("Proses: Session expired, melakukan login ulang...");
+      const loginPayload = {
+        email: sessionData.email,
+        password: sessionData.password,
+        rememberMe: true,
+        callbackURL: "/dashboard"
+      };
+      const loginResponse = await this.api.post(this.config.endpoints.auth.signIn, loginPayload);
+      await this._verifyAndFollowRedirects(loginResponse, "login");
+      const newSessionResponse = await this.api.get(this.config.endpoints.auth.getSession);
+      if (!newSessionResponse.data?.session?.token) {
+        throw new Error("Login ulang gagal - tidak dapat mendapatkan session token");
+      }
+      console.log("Proses: Login ulang berhasil");
+      return true;
+    } catch (error) {
+      console.error(`Proses ensure login gagal: ${error.message}`);
+      return false;
     }
   }
   async _performRegistration() {
@@ -222,7 +530,8 @@ class ShotAIAPI {
       name: name
     };
     console.log("Proses: Melakukan pendaftaran...");
-    await this.api.post(this.config.endpoints.auth.signUp, signupPayload);
+    const signupResponse = await this.api.post(this.config.endpoints.auth.signUp, signupPayload);
+    await this._verifyAndFollowRedirects(signupResponse, "signup");
     console.log("Proses: Menunggu email verifikasi...");
     let verificationToken = null;
     for (let i = 0; i < 60; i++) {
@@ -233,7 +542,8 @@ class ShotAIAPI {
     }
     if (!verificationToken) throw new Error("Gagal menemukan token verifikasi setelah 3 menit.");
     console.log("Proses: Memverifikasi email...");
-    await this.api.get(`${this.config.endpoints.auth.verifyEmail}?token=${verificationToken}`);
+    const verifyResponse = await this.api.get(`${this.config.endpoints.auth.verifyEmail}?token=${verificationToken}`);
+    await this._verifyAndFollowRedirects(verifyResponse, "email verification");
     console.log("Proses: Melakukan login setelah verifikasi...");
     const loginPayload = {
       email: email,
@@ -242,6 +552,7 @@ class ShotAIAPI {
       callbackURL: "/dashboard"
     };
     const loginResponse = await this.api.post(this.config.endpoints.auth.signIn, loginPayload);
+    await this._verifyAndFollowRedirects(loginResponse, "post-verification login");
     const sessionResponse = await this.api.get(this.config.endpoints.auth.getSession);
     if (!sessionResponse.data?.session?.token) {
       throw new Error("Gagal mendapatkan session token setelah login.");
@@ -292,7 +603,8 @@ class ShotAIAPI {
         rememberMe: true,
         callbackURL: "/dashboard"
       };
-      await this.api.post(this.config.endpoints.auth.signIn, loginPayload);
+      const loginResponse = await this.api.post(this.config.endpoints.auth.signIn, loginPayload);
+      await this._verifyAndFollowRedirects(loginResponse, "login");
       const sessionResponse = await this.api.get(this.config.endpoints.auth.getSession);
       if (!sessionResponse.data?.session?.token) {
         throw new Error("Gagal mendapatkan session token setelah login.");
@@ -329,8 +641,15 @@ class ShotAIAPI {
     if (key) {
       try {
         sessionData = await this._getTokenFromKey(key);
+        console.log("Proses: Memastikan login valid dengan session yang ada...");
+        const isLoggedIn = await this._ensureLogin(sessionData);
+        if (!isLoggedIn) {
+          console.warn("[PERINGATAN] Session tidak valid, mencoba login ulang...");
+          throw new Error("Session expired");
+        }
       } catch (error) {
         console.warn(`[PERINGATAN] ${error.message}. Mendaftarkan sesi baru...`);
+        sessionData = null;
       }
     }
     if (!sessionData) {
@@ -340,9 +659,8 @@ class ShotAIAPI {
       console.log(`-> PENTING: Simpan kunci baru ini: ${newSession.key}`);
       currentKey = newSession.key;
       sessionData = await this._getTokenFromKey(currentKey);
+      await this._ensureLogin(sessionData);
     }
-    const sessionToken = sessionData.session.token;
-    await this.cookieJar.setCookie(`__Secure-better-auth.session_token=${sessionToken}; Domain=.shotai.app; Path=/; Secure; SameSite=Lax`, "https://shotai.app");
     return {
       sessionData: sessionData,
       key: currentKey
@@ -372,6 +690,41 @@ class ShotAIAPI {
       throw error;
     }
   }
+  async _processImageInput(imageInput) {
+    if (Buffer.isBuffer(imageInput) || typeof imageInput === "string") {
+      return [imageInput];
+    }
+    if (Array.isArray(imageInput)) {
+      return imageInput;
+    }
+    return [imageInput];
+  }
+  async _uploadMultipleImages(imageInputs) {
+    const imageIds = [];
+    for (const imageInput of imageInputs) {
+      try {
+        let imageBuffer;
+        if (Buffer.isBuffer(imageInput)) {
+          imageBuffer = imageInput;
+        } else if (imageInput.startsWith("http")) {
+          const response = await axios.get(imageInput, {
+            responseType: "arraybuffer",
+            timeout: 3e4
+          });
+          imageBuffer = Buffer.from(response.data);
+        } else {
+          imageBuffer = Buffer.from(imageInput.replace(/^data:image\/\w+;base64,/, ""), "base64");
+        }
+        const imageId = await this._uploadImage(imageBuffer);
+        imageIds.push(imageId);
+        console.log(`Proses: Gambar berhasil diunggah (${imageIds.length}/${imageInputs.length})`);
+      } catch (error) {
+        console.error(`Proses: Gagal mengunggah gambar: ${error.message}`);
+        throw error;
+      }
+    }
+    return imageIds;
+  }
   async txt2img({
     key,
     prompt,
@@ -379,6 +732,7 @@ class ShotAIAPI {
     aspectRatio = "auto"
   }) {
     try {
+      const modelData = this._validateModel(model, "TEXT_TO_IMAGE");
       const {
         key: currentKey
       } = await this._ensureValidSession({
@@ -389,15 +743,18 @@ class ShotAIAPI {
         type: "TEXT_TO_IMAGE",
         prompt: prompt,
         model: model,
-        aspectRatio: aspectRatio
+        aspectRatio: aspectRatio || modelData.aspectRatios.options[0].value
       };
       const response = await this.api.post(this.config.endpoints.generation.image, payload);
-      console.log("Proses: Tugas txt2img berhasil dibuat. ID:", response.data.id);
+      console.log("Proses: Tugas txt2img berhasil dibuat. ID:", response.data.generation_id);
       return {
         ...response.data,
         key: currentKey
       };
     } catch (error) {
+      if (error.availableModels) {
+        throw error;
+      }
       const errorMessage = error.response?.data?.message || error.message;
       console.error(`Proses txt2img gagal: ${errorMessage}`);
       throw new Error(errorMessage);
@@ -411,39 +768,39 @@ class ShotAIAPI {
     aspectRatio = "auto"
   }) {
     try {
+      const modelData = this._validateModel(model, "IMAGE_TO_IMAGE");
       const {
         key: currentKey
       } = await this._ensureValidSession({
         key: key
       });
       console.log(`Proses: Membuat gambar dari gambar dengan model ${model}...`);
-      console.log("Proses: Mengunduh dan mengunggah gambar...");
-      let imageBuffer;
-      if (Buffer.isBuffer(imageUrl)) {
-        imageBuffer = imageUrl;
-      } else if (imageUrl.startsWith("http")) {
-        const response = await axios.get(imageUrl, {
-          responseType: "arraybuffer"
-        });
-        imageBuffer = Buffer.from(response.data);
-      } else {
-        imageBuffer = Buffer.from(imageUrl.replace(/^data:image\/\w+;base64,/, ""), "base64");
+      const imageInputs = await this._processImageInput(imageUrl);
+      console.log(`Proses: Mengunggah ${imageInputs.length} gambar...`);
+      const imageIds = await this._uploadMultipleImages(imageInputs);
+      if (imageIds.length < modelData.images.min) {
+        throw new Error(`Model ${model} membutuhkan minimal ${modelData.images.min} gambar`);
       }
-      const imageId = await this._uploadImage(imageBuffer);
+      if (imageIds.length > modelData.images.max) {
+        throw new Error(`Model ${model} hanya mendukung maksimal ${modelData.images.max} gambar`);
+      }
       const payload = {
         type: "IMAGE_TO_IMAGE",
         prompt: prompt,
         model: model,
-        aspectRatio: aspectRatio,
-        imageIds: [imageId]
+        aspectRatio: aspectRatio || modelData.aspectRatios.options[0].value,
+        imageIds: imageIds
       };
       const response = await this.api.post(this.config.endpoints.generation.image, payload);
-      console.log("Proses: Tugas img2img berhasil dibuat. ID:", response.data.id);
+      console.log("Proses: Tugas img2img berhasil dibuat. ID:", response.data.generation_id);
       return {
         ...response.data,
         key: currentKey
       };
     } catch (error) {
+      if (error.availableModels) {
+        throw error;
+      }
       const errorMessage = error.response?.data?.message || error.message;
       console.error(`Proses img2img gagal: ${errorMessage}`);
       throw new Error(errorMessage);
@@ -459,46 +816,45 @@ class ShotAIAPI {
     resolution = "720p"
   }) {
     try {
+      const modelData = this._validateModel(model, imageUrl ? "IMAGE_TO_VIDEO" : "TEXT_TO_VIDEO");
       const {
         key: currentKey
       } = await this._ensureValidSession({
         key: key
       });
-      console.log(`Proses: Membuat video dari teks dengan model ${model}...`);
+      console.log(`Proses: Membuat video dari ${imageUrl ? "gambar" : "teks"} dengan model ${model}...`);
       let imageIds = [];
       if (imageUrl) {
-        console.log("Proses: Mengunduh dan mengunggah gambar...");
-        let imageBuffer;
-        if (Buffer.isBuffer(imageUrl)) {
-          imageBuffer = imageUrl;
-        } else if (imageUrl.startsWith("http")) {
-          const response = await axios.get(imageUrl, {
-            responseType: "arraybuffer"
-          });
-          imageBuffer = Buffer.from(response.data);
-        } else {
-          imageBuffer = Buffer.from(imageUrl.replace(/^data:image\/\w+;base64,/, ""), "base64");
+        const imageInputs = await this._processImageInput(imageUrl);
+        console.log(`Proses: Mengunggah ${imageInputs.length} gambar...`);
+        imageIds = await this._uploadMultipleImages(imageInputs);
+        if (imageIds.length < modelData.images.min) {
+          throw new Error(`Model ${model} membutuhkan minimal ${modelData.images.min} gambar`);
         }
-        const imageId = await this._uploadImage(imageBuffer);
-        imageIds = [imageId];
+        if (imageIds.length > modelData.images.max) {
+          throw new Error(`Model ${model} hanya mendukung maksimal ${modelData.images.max} gambar`);
+        }
       }
       const payload = {
         type: imageIds.length > 0 ? "IMAGE_TO_VIDEO" : "TEXT_TO_VIDEO",
         prompt: prompt,
         model: model,
-        aspectRatio: aspectRatio,
-        duration: duration,
-        resolution: resolution,
+        aspectRatio: aspectRatio || modelData.aspectRatios.options[0].value,
+        duration: duration || modelData.durations.options[0].value,
+        resolution: resolution || modelData.resolutions.options[0].value,
         imageIds: imageIds,
         imageUsage: ""
       };
       const response = await this.api.post(this.config.endpoints.generation.video, payload);
-      console.log("Proses: Tugas video berhasil dibuat. ID:", response.data.id);
+      console.log("Proses: Tugas video berhasil dibuat. ID:", response.data.generation_id);
       return {
         ...response.data,
         key: currentKey
       };
     } catch (error) {
+      if (error.availableModels) {
+        throw error;
+      }
       const errorMessage = error.response?.data?.message || error.message;
       console.error(`Proses pembuatan video gagal: ${errorMessage}`);
       throw new Error(errorMessage);
@@ -650,14 +1006,23 @@ export default async function handler(req, res) {
         }
         response = await api.status(params);
         break;
+      case "list_models":
+        response = api.getAvailableModels(params.type);
+        break;
       default:
         return res.status(400).json({
-          error: `Action tidak valid: ${action}. Action yang didukung: 'register', 'login', 'txt2img', 'img2img', 'txt2vid', 'img2vid', 'list_key', 'del_key', 'status'.`
+          error: `Action tidak valid: ${action}. Action yang didukung: 'register', 'login', 'txt2img', 'img2img', 'txt2vid', 'img2vid', 'list_key', 'del_key', 'status', 'list_models'.`
         });
     }
     return res.status(200).json(response);
   } catch (error) {
     console.error(`[FATAL ERROR] Kegagalan pada action '${action}':`, error);
+    if (error.availableModels) {
+      return res.status(400).json({
+        error: error.error,
+        availableModels: error.availableModels
+      });
+    }
     return res.status(500).json({
       error: error.message || "Terjadi kesalahan internal pada server."
     });

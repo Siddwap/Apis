@@ -14,7 +14,9 @@ import SpoofHead from "@/lib/spoof-head";
 class WudysoftAPI {
   constructor() {
     this.client = axios.create({
-      baseURL: `https://${apiConfig.DOMAIN_URL}/api`
+      baseURL: `https://${apiConfig.DOMAIN_URL}/api`,
+      timeout: 3e4,
+      maxRedirects: 5
     });
   }
   async createPaste(title, content) {
@@ -67,19 +69,23 @@ class WudysoftAPI {
           key: key
         }
       });
-      return true;
+      return response.data?.success || false;
     } catch (error) {
       console.error("[WUDYSOFT] deletePaste failed:", error.response?.data || error.message);
       return false;
     }
   }
 }
-export class ExsiteAI {
+class ExsiteAI {
   constructor() {
     this.jar = new CookieJar();
     this.client = wrapper(axios.create({
       jar: this.jar,
-      timeout: 3e4
+      timeout: 3e4,
+      maxRedirects: 5,
+      validateStatus: function(status) {
+        return status >= 200 && status < 400;
+      }
     }));
     this.csrfToken = null;
     this.socketId = null;
@@ -89,9 +95,9 @@ export class ExsiteAI {
   }
   log = console.log;
   error = console.error;
-  d = (v, def) => v ?? def;
-  o = (obj, key, def) => obj?.[key] ?? def;
-  r = () => randomBytes(8).toString("hex");
+  _random() {
+    return Math.random().toString(36).substring(2, 12);
+  }
   models = {
     openai: {
       id: 32,
@@ -175,87 +181,209 @@ export class ExsiteAI {
       ...SpoofHead()
     };
   }
-  async ensureKey(key) {
-    if (this.sessionKey && this.csrfToken) return this.sessionKey;
-    if (!key) throw new Error("Key required. Use register() or loadSessionKey()");
-    await this.loadSessionKey(key);
-    return this.sessionKey;
+  async _verifyAndFollowRedirects(response, operation) {
+    if ([301, 302, 303, 307, 308].includes(response.status)) {
+      this.log(`[REDIRECT] Mengikuti redirect untuk ${operation}...`);
+      const redirectUrl = response.headers.location;
+      if (redirectUrl) {
+        return await this.client.get(redirectUrl);
+      }
+    }
+    return response;
+  }
+  async _verifySession() {
+    try {
+      this.log("[SESSION] Memverifikasi session...");
+      const response = await this.client.get(`${this.base}/dashboard`, {
+        headers: this.headers()
+      });
+      const html = response.data;
+      const isLoggedIn = html.includes("user-menu") || html.includes("dashboard") || !html.includes("login");
+      if (!isLoggedIn) {
+        throw new Error("Session expired - tidak terdeteksi login");
+      }
+      const newCsrf = html.match(/name="csrf-token" content="([^"]+)"/)?.[1];
+      const newSocket = html.match(/"socketId":"([^"]+)"/)?.[1];
+      if (newCsrf) {
+        this.csrfToken = newCsrf;
+        this.log("[SESSION] CSRF token diperbarui");
+      }
+      if (newSocket) {
+        this.socketId = newSocket;
+        this.log("[SESSION] Socket ID diperbarui");
+      }
+      return true;
+    } catch (error) {
+      this.error("[SESSION] Verifikasi gagal:", error.message);
+      return false;
+    }
+  }
+  async _getSessionFromKey(key) {
+    this.log(`[SESSION] Memuat session dari kunci: ${key}`);
+    const savedSession = await this.wudysoft.getPaste(key);
+    if (!savedSession) throw new Error(`Session dengan kunci "${key}" tidak ditemukan.`);
+    try {
+      const sessionData = JSON.parse(savedSession);
+      if (!sessionData.user?.email) throw new Error("Data user tidak valid dalam session tersimpan.");
+      this.log("[SESSION] Session berhasil dimuat.");
+      return sessionData;
+    } catch (e) {
+      throw new Error(`Gagal memuat session: ${e.message}`);
+    }
+  }
+  async _ensureValidSession({
+    key
+  }) {
+    let sessionData;
+    let currentKey = key;
+    if (key) {
+      try {
+        sessionData = await this._getSessionFromKey(key);
+        this.sessionKey = key;
+        this.userData = sessionData.user;
+        this.csrfToken = sessionData.csrfToken;
+        this.socketId = sessionData.socketId;
+        this.jar = CookieJar.fromJSON(JSON.stringify(sessionData.cookieJar));
+        this.client = wrapper(axios.create({
+          jar: this.jar,
+          timeout: 3e4,
+          maxRedirects: 5,
+          validateStatus: function(status) {
+            return status >= 200 && status < 400;
+          }
+        }));
+        const isValid = await this._verifySession();
+        if (!isValid) {
+          throw new Error("Session expired");
+        }
+        this.log("[SESSION] Session valid dan aktif");
+        return {
+          sessionData: sessionData,
+          key: currentKey
+        };
+      } catch (error) {
+        this.error(`[SESSION] Gagal load session dari key ${key}:`, error.message);
+        sessionData = null;
+      }
+    }
+    if (!sessionData) {
+      this.log("[SESSION] Membuat session baru...");
+      const newSession = await this.register();
+      if (!newSession?.key) {
+        throw new Error("Gagal membuat session baru");
+      }
+      currentKey = newSession.key;
+      sessionData = await this._getSessionFromKey(currentKey);
+      this.log(`[SESSION] Session baru dibuat: ${currentKey}`);
+    }
+    return {
+      sessionData: sessionData,
+      key: currentKey
+    };
   }
   async register() {
     try {
-      this.log("[REGISTER] Starting...");
-      const name = `u_${this.r()}`;
-      const email = `${this.r()}@emailhook.site`;
-      const pass = `${this.r().toUpperCase()}A1!`;
+      this.log("\n====== MEMULAI PROSES REGISTRASI EXSITE AI ======");
+      const name = `User${this._random().substring(0, 8)}`;
+      const email = `${this._random()}@emailhook.site`;
+      const password = `${this._random()}A1!`;
+      this.log(`[REGISTER] Membuat akun: ${email}`);
       const form = new FormData();
       form.append("name", name);
       form.append("surname", name + "x");
       form.append("email", email);
-      form.append("password", pass);
-      form.append("password_confirmation", pass);
+      form.append("password", password);
+      form.append("password_confirmation", password);
       form.append("plan", "");
       form.append("affiliate_code", "");
-      const h = {
+      const headers = {
         ...this.headers(),
         "content-type": form.getHeaders()["content-type"],
         referer: `${this.base}/register`
       };
-      await this.client.post(`${this.base}/register`, form.getBuffer(), {
-        headers: h
+      this.log("[REGISTER] Melakukan pendaftaran...");
+      const registerResponse = await this.client.post(`${this.base}/register`, form.getBuffer(), {
+        headers: headers
       });
-      this.log("[REGISTER] Success");
+      await this._verifyAndFollowRedirects(registerResponse, "register");
+      this.log("[REGISTER] Berhasil mendaftar, memuat dashboard...");
       await this.dash();
       const sessionData = {
         user: {
+          name: name,
           email: email,
-          pass: pass,
-          name: name
+          password: password
         },
         csrfToken: this.csrfToken,
         socketId: this.socketId,
         cookieJar: this.jar.toJSON()
       };
-      this.sessionKey = await this.wudysoft.createPaste(`exsite_${this.r()}`, JSON.stringify(sessionData));
-      this.userData = {
-        email: email,
-        pass: pass,
-        name: name
-      };
-      this.log("[REGISTER] Session saved → key:", this.sessionKey);
+      const sessionToSave = JSON.stringify(sessionData);
+      const sessionTitle = `exsite-session-${this._random()}`;
+      const newKey = await this.wudysoft.createPaste(sessionTitle, sessionToSave);
+      if (!newKey) throw new Error("Gagal menyimpan session Exsite AI baru.");
+      this.sessionKey = newKey;
+      this.userData = sessionData.user;
+      this.log("\n[SUCCESS] Registrasi Exsite AI berhasil!");
+      this.log(`[SESSION] Kunci: ${newKey}`);
+      this.log(`[USER] ${name} (${email})`);
       return {
-        key: this.sessionKey,
+        key: newKey,
         email: email,
-        name: name
+        name: name,
+        user: {
+          name: name,
+          email: email
+        }
       };
-    } catch (err) {
-      this.error("[REGISTER] Failed →", this.o(err, "response.data.message", err.message));
-      throw err;
+    } catch (error) {
+      this.error("[REGISTER] Gagal:", error.response?.data || error.message);
+      throw error;
     }
   }
-  async loadSessionKey(key) {
+  async login({
+    email,
+    password
+  }) {
     try {
-      this.log("[LOAD] Loading key:", key);
-      const raw = await this.wudysoft.getPaste(key);
-      if (!raw) throw new Error("Key not found");
-      const data = JSON.parse(raw);
-      this.sessionKey = key;
-      this.userData = data.user;
-      this.csrfToken = data.csrfToken;
-      this.socketId = data.socketId;
-      this.jar = CookieJar.fromJSON(JSON.stringify(data.cookieJar));
-      this.client = wrapper(axios.create({
-        jar: this.jar,
-        timeout: 3e4
-      }));
-      await this.dash();
-      this.log("[LOAD] Session restored");
-      return {
-        key: key,
-        email: this.userData.email
+      this.log(`[LOGIN] Mencoba login dengan email: ${email}`);
+      const form = new FormData();
+      form.append("email", email);
+      form.append("password", password);
+      form.append("remember", "on");
+      const headers = {
+        ...this.headers(),
+        "content-type": form.getHeaders()["content-type"],
+        referer: `${this.base}/login`
       };
-    } catch (err) {
-      this.error("[LOAD] Failed →", err.message);
-      throw err;
+      const loginResponse = await this.client.post(`${this.base}/login`, form.getBuffer(), {
+        headers: headers
+      });
+      await this._verifyAndFollowRedirects(loginResponse, "login");
+      await this.dash();
+      const sessionData = {
+        user: {
+          email: email,
+          password: password,
+          name: `User${this._random().substring(0, 8)}`
+        },
+        csrfToken: this.csrfToken,
+        socketId: this.socketId,
+        cookieJar: this.jar.toJSON()
+      };
+      const sessionToSave = JSON.stringify(sessionData);
+      const sessionTitle = `exsite-session-${this._random()}`;
+      const newKey = await this.wudysoft.createPaste(sessionTitle, sessionToSave);
+      if (!newKey) throw new Error("Gagal menyimpan session login.");
+      this.log("[LOGIN] Berhasil login dan menyimpan session");
+      return {
+        key: newKey,
+        email: email,
+        user: sessionData.user
+      };
+    } catch (error) {
+      this.error("[LOGIN] Gagal:", error.response?.data || error.message);
+      throw error;
     }
   }
   async generate({
@@ -266,8 +394,11 @@ export class ExsiteAI {
     ...rest
   }) {
     try {
-      await this.ensureKey(key);
-      await this.dash();
+      const {
+        key: currentKey
+      } = await this._ensureValidSession({
+        key: key
+      });
       if (!this.csrfToken) throw new Error("CSRF token missing");
       if (!this.models[model]) throw new Error(`Model "${model}" not supported`);
       const config = this.models[model];
@@ -285,7 +416,7 @@ export class ExsiteAI {
         payload.type = isImg ? "image-to-image" : "text-to-image";
       }
       if (isImg) {
-        payload.image_src = await this.img(imageUrl);
+        payload.image_src = await this._uploadImage(imageUrl);
       }
       const form = new FormData();
       for (const [k, v] of Object.entries(payload)) {
@@ -297,110 +428,145 @@ export class ExsiteAI {
           }
         }
       }
-      const h = {
+      const headers = {
         ...this.headers(),
         "content-type": form.getHeaders()["content-type"],
         "x-csrf-token": this.csrfToken,
         "x-socket-id": this.socketId || "x"
       };
-      this.log(`[GEN] ${isImg ? "img2img" : "txt2img"} → ${model}`);
-      const res = await this.client.post(`${this.base}/dashboard/user/openai/generate`, form.getBuffer(), {
-        headers: h
+      this.log(`[GENERATE] ${isImg ? "img2img" : "txt2img"} → ${model}`);
+      const response = await this.client.post(`${this.base}/dashboard/user/openai/generate`, form.getBuffer(), {
+        headers: headers
       });
       return {
-        ...res.data,
-        key: this.sessionKey
+        ...response.data,
+        key: currentKey
       };
-    } catch (err) {
-      this.error("[GEN] Failed →", this.o(err, "response.data.message", err.message));
-      throw err;
+    } catch (error) {
+      this.error("[GENERATE] Gagal:", error.response?.data || error.message);
+      throw error;
     }
   }
   async status({
     key,
-    offset = 5
+    task_id,
+    offset = 0
   }) {
     try {
-      await this.ensureKey(key);
-      await this.dash();
-      const h = {
+      const {
+        key: currentKey
+      } = await this._ensureValidSession({
+        key: key
+      });
+      const headers = {
         ...this.headers(),
         "x-csrf-token": this.csrfToken,
         "x-socket-id": this.socketId || "x"
       };
-      this.log(`[LAZYLOAD] offset: ${offset}`);
-      const res = await this.client.get(`${this.base}/dashboard/user/openai/generate/lazyload`, {
-        headers: h,
+      this.log(`[STATUS] Mengecek status, offset: ${offset}`);
+      const response = await this.client.get(`${this.base}/dashboard/user/openai/generate/lazyload`, {
+        headers: headers,
         params: {
           offset: offset,
           post_type: "ai_image_generator"
         }
       });
+      let data = response.data;
+      if (task_id && data.html) {
+        const containsTask = data.html.includes(task_id);
+        if (!containsTask) {
+          data.html = "Task not found or not completed yet";
+        }
+      }
       return {
-        ...res.data,
-        key: this.sessionKey
+        ...data,
+        key: currentKey
       };
-    } catch (err) {
-      this.error("[LAZYLOAD] Failed →", err.message);
-      throw err;
+    } catch (error) {
+      this.error("[STATUS] Gagal:", error.response?.data || error.message);
+      throw error;
     }
   }
-  async listKeys() {
-    const all = await this.wudysoft.listPastes();
-    return all.filter(p => p.title?.startsWith("exsite_")).map(p => ({
-      key: p.key,
-      title: p.title
-    }));
+  async list_key() {
+    try {
+      this.log("[LIST_KEY] Mengambil daftar kunci session...");
+      const allPastes = await this.wudysoft.listPastes();
+      const sessionKeys = allPastes.filter(paste => paste.title && paste.title.startsWith("exsite-session-")).map(paste => paste.key);
+      this.log(`[LIST_KEY] Ditemukan ${sessionKeys.length} kunci`);
+      return sessionKeys;
+    } catch (error) {
+      this.error("[LIST_KEY] Gagal:", error.message);
+      throw error;
+    }
   }
-  async deleteKey({
+  async del_key({
     key
   }) {
-    const ok = await this.wudysoft.deletePaste(key);
-    if (this.sessionKey === key) {
-      this.sessionKey = null;
-      this.csrfToken = null;
-      this.socketId = null;
-      this.userData = null;
+    if (!key) {
+      throw new Error("Parameter 'key' wajib diisi");
     }
-    return {
-      success: ok,
-      key: key
-    };
+    try {
+      this.log(`[DEL_KEY] Menghapus kunci: ${key}`);
+      const success = await this.wudysoft.deletePaste(key);
+      if (this.sessionKey === key) {
+        this.sessionKey = null;
+        this.csrfToken = null;
+        this.socketId = null;
+        this.userData = null;
+      }
+      if (success) {
+        this.log(`[DEL_KEY] Kunci ${key} berhasil dihapus`);
+        return {
+          success: true,
+          key: key
+        };
+      } else {
+        throw new Error("Gagal menghapus kunci");
+      }
+    } catch (error) {
+      this.error(`[DEL_KEY] Gagal menghapus kunci ${key}:`, error.message);
+      throw error;
+    }
   }
   async dash() {
     try {
-      const res = await this.client.get(`${this.base}/dashboard`, {
+      const response = await this.client.get(`${this.base}/dashboard`, {
         headers: this.headers()
       });
-      const html = res.data;
+      const html = response.data;
       const newCsrf = html.match(/name="csrf-token" content="([^"]+)"/)?.[1];
       const newSocket = html.match(/"socketId":"([^"]+)"/)?.[1];
       if (newCsrf) this.csrfToken = newCsrf;
       if (newSocket) this.socketId = newSocket;
-    } catch (err) {
-      this.error("[DASH] Failed →", err.message);
+      this.log("[DASH] Dashboard loaded");
+    } catch (error) {
+      this.error("[DASH] Gagal:", error.message);
+      throw error;
     }
   }
-  async img(src) {
-    if (!src) return null;
-    let buffer, filename = "image.png",
-      contentType = "image/png";
-    if (Buffer.isBuffer(src)) {
-      buffer = src;
-    } else if (typeof src === "string") {
-      if (src.startsWith("http")) {
-        const res = await this.client.get(src, {
-          responseType: "arraybuffer"
+  async _uploadImage(imageUrl) {
+    if (!imageUrl) return null;
+    let buffer, filename = "image.jpg",
+      contentType = "image/jpeg";
+    if (Buffer.isBuffer(imageUrl)) {
+      buffer = imageUrl;
+    } else if (typeof imageUrl === "string") {
+      if (imageUrl.startsWith("http")) {
+        const response = await axios.get(imageUrl, {
+          responseType: "arraybuffer",
+          timeout: 3e4
         });
-        buffer = Buffer.from(res.data);
-        contentType = res.headers["content-type"] || contentType;
-      } else if (src.startsWith("data:")) {
-        const match = src.match(/^data:([^;]+);/);
+        buffer = Buffer.from(response.data);
+        contentType = response.headers["content-type"] || contentType;
+      } else if (imageUrl.startsWith("data:")) {
+        const match = imageUrl.match(/^data:([^;]+);/);
         if (match) contentType = match[1];
-        buffer = Buffer.from(src.split(",")[1], "base64");
+        buffer = Buffer.from(imageUrl.split(",")[1], "base64");
+      } else {
+        throw new Error("Format imageUrl tidak didukung");
       }
     } else {
-      throw new Error("imageUrl: URL/base64/Buffer only");
+      throw new Error("imageUrl harus berupa URL, base64, atau Buffer");
     }
     return {
       value: buffer,
@@ -428,6 +594,14 @@ export default async function handler(req, res) {
       case "register":
         response = await api.register();
         break;
+      case "login":
+        if (!params.email || !params.password) {
+          return res.status(400).json({
+            error: "Parameter 'email' dan 'password' wajib diisi untuk action 'login'."
+          });
+        }
+        response = await api.login(params);
+        break;
       case "generate":
         if (!params.prompt) {
           return res.status(400).json({
@@ -435,17 +609,6 @@ export default async function handler(req, res) {
           });
         }
         response = await api.generate(params);
-        break;
-      case "list_key":
-        response = await api.listKeys();
-        break;
-      case "del_key":
-        if (!params.key) {
-          return res.status(400).json({
-            error: "Parameter 'key' wajib diisi untuk action 'del_key'."
-          });
-        }
-        response = await api.deleteKey(params);
         break;
       case "status":
         if (!params.key) {
@@ -455,9 +618,20 @@ export default async function handler(req, res) {
         }
         response = await api.status(params);
         break;
+      case "list_key":
+        response = await api.list_key();
+        break;
+      case "del_key":
+        if (!params.key) {
+          return res.status(400).json({
+            error: "Parameter 'key' wajib diisi untuk action 'del_key'."
+          });
+        }
+        response = await api.del_key(params);
+        break;
       default:
         return res.status(400).json({
-          error: `Action tidak valid: ${action}. Action yang didukung: register, generate, list_key, del_key, status.`
+          error: `Action tidak valid: ${action}. Action yang didukung: 'register', 'login', 'generate', 'status', 'list_key', 'del_key'.`
         });
     }
     return res.status(200).json(response);

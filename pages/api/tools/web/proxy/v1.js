@@ -29,7 +29,8 @@ class AxiosClient {
       25: "https://cors.luckydesigner.workers.dev/?",
       26: "https://cors.eu.org/",
       27: "https://cors.niceeli.workers.dev/?",
-      28: "https://cors.bbear.workers.dev/?"
+      28: "https://cors.bbear.workers.dev/?",
+      29: "https://rv.lil-hacker.workers.dev/proxy?url="
     };
   }
   addHost(key, url) {

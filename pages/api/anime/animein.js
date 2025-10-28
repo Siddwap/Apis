@@ -1,5 +1,5 @@
 import axios from "axios";
-export class AnimeIn {
+class AnimeIn {
   constructor() {
     this.api = {
       base: "https://xyz-api.animein.net",
