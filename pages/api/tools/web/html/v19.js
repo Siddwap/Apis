@@ -48,8 +48,9 @@ class TrevorFox {
       const pre = $("pre").first();
       if (!pre || pre.length === 0) throw new Error("Tidak ada <pre> ditemukan");
       pre.find("span.line-number").remove();
-      const htmlContent = pre.html().trim();
-      if (!htmlContent) throw new Error("Tidak ada hasil ditemukan setelah pembersihan");
+      const textContent = pre.text().trim();
+      if (!textContent) throw new Error("Tidak ada hasil ditemukan setelah pembersihan");
+      const htmlContent = cheerio.load(textContent).html();
       return htmlContent;
     } catch (err) {
       console.error("❌ TrevorFox Error:", err && err.message ? err.message : err);

@@ -2,7 +2,7 @@ import fetch from "node-fetch";
 class Downloader {
   constructor() {
     this.firebaseConfig = {
-      apiKey: "AIzaSyDOFX784HYXTs_w6lJrsSH9M9SRm4PxAPA",
+      apiKey: this.decode("QUl6YVN5RE9GWDc4NEhZWFRzX3c2bEpyc1NIOU05U1JtNFB4QVBB"),
       appId: "1:358084965661:android:b88110d77e56ae11b11df4",
       projectId: "358084965661"
     };

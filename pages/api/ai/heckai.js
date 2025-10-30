@@ -41,7 +41,7 @@ class HeckAI {
   }
   async create(question) {
     try {
-      const slugTitle = `${question?.split(/\s+/)[0].toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${new Date().toLocaleDateString()}`;
+      const slugTitle = `${question?.split(/\s+/)[0].toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`;
       const {
         data
       } = await axios.post(`${this.baseURL}/session/create`, {
@@ -49,40 +49,70 @@ class HeckAI {
       }, {
         headers: this.headers
       });
-      return data?.id || data?.id;
+      return data?.id || data?.sessionId;
     } catch (err) {
       console.error(`Error creating session: ${err.message}`);
       throw new Error(`Failed to create session: ${err.message}`);
     }
   }
   async chat({
-    type = "chat",
     model = 1,
     lang = "English",
     prev_answer = null,
     prev_question = null,
-    prompt: question
+    prompt: question,
+    sessionId = null,
+    search = false
   }) {
     try {
       const modelName = this.modelList[model];
-      if (!modelName) throw new Error(`Model not found. Available models: ${Object.entries(this.modelList).map(([ i, name ]) => `${i}. ${name}`).join("\n")}`);
-      const sessionId = await this.create(question);
-      const response = await axios.post(`${this.baseURL}/${type}`, {
+      if (!modelName) {
+        throw new Error(`Model not found. Available models: ${Object.entries(this.modelList).map(([ i, name ]) => `${i}. ${name}`).join("\n")}`);
+      }
+      const endpoint = search ? "search" : "chat";
+      const finalSessionId = sessionId || await this.create(question);
+      const requestData = {
         model: modelName,
         question: question,
         language: lang,
-        sessionId: sessionId,
-        previousQuestion: prev_question,
-        previousAnswer: prev_answer
-      }, {
+        sessionId: finalSessionId,
+        ...prev_question && {
+          previousQuestion: prev_question
+        },
+        ...prev_answer && {
+          previousAnswer: prev_answer
+        }
+      };
+      Object.keys(requestData).forEach(key => {
+        if (requestData[key] === null || requestData[key] === undefined) {
+          delete requestData[key];
+        }
+      });
+      const response = await axios.post(`${this.baseURL}/${endpoint}`, requestData, {
         headers: this.headers
       });
-      console.log(`Processed ${type} successfully!`);
-      return this.parseData(response.data);
+      console.log(`Processed ${endpoint} successfully!`);
+      return {
+        ...this.parseData(response.data),
+        sessionId: finalSessionId
+      };
     } catch (err) {
       console.error(`Error in chat: ${err.message}`);
-      throw new Error(`Failed to execute ${type}: ${err.message}`);
+      if (err.response) {
+        console.error(`Server error: ${err.response.status} - ${err.response.data}`);
+      }
+      throw new Error(`Failed to execute chat: ${err.message}`);
     }
+  }
+  setAuthorization(token) {
+    this.headers.authorization = token;
+    return this;
+  }
+  getModels() {
+    return Object.entries(this.modelList).map(([id, name]) => ({
+      id: parseInt(id),
+      name: name
+    }));
   }
 }
 export default async function handler(req, res) {
@@ -93,8 +123,8 @@ export default async function handler(req, res) {
     });
   }
   try {
-    const heck = new HeckAI();
-    const response = await heck.chat(params);
+    const api = new HeckAI();
+    const response = await api.chat(params);
     return res.status(200).json(response);
   } catch (error) {
     res.status(500).json({

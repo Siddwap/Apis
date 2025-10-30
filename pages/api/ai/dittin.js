@@ -519,7 +519,7 @@ class DittinAIAPI {
       throw new Error(errorMessage);
     }
   }
-  async chat({
+  async start_chat({
     key,
     chatbotId,
     locale = "en"
@@ -766,13 +766,13 @@ export default async function handler(req, res) {
       case "search":
         response = await api.search(params);
         break;
-      case "chat":
+      case "start_chat":
         if (!params.chatbotId) {
           return res.status(400).json({
-            error: "Parameter 'chatbotId' wajib diisi untuk action 'chat'."
+            error: "Parameter 'chatbotId' wajib diisi untuk action 'start_chat'."
           });
         }
-        response = await api.chat(params);
+        response = await api.start_chat(params);
         break;
       case "chat_image":
         if (!params.chatListId) {
@@ -781,6 +781,14 @@ export default async function handler(req, res) {
           });
         }
         response = await api.chat_image(params);
+        break;
+      case "send_message":
+        if (!params.chatListId) {
+          return res.status(400).json({
+            error: "Parameter 'chatListId' wajib diisi untuk action 'send_message'."
+          });
+        }
+        response = await api.send_message(params);
         break;
       case "video_gen":
         if (!params.imageUrl) {
@@ -803,7 +811,7 @@ export default async function handler(req, res) {
         break;
       default:
         return res.status(400).json({
-          error: `Action tidak valid: ${action}. Action yang didukung: 'register', 'login', 'user_info', 'image_gen', 'status', 'search', 'chat', 'chat_image', 'video_gen', 'list_key', 'del_key'.`
+          error: `Action tidak valid: ${action}. Action yang didukung: 'register', 'login', 'user_info', 'image_gen', 'status', 'search', 'start_chat', 'chat_image', 'video_gen', 'list_key', 'del_key'.`
         });
     }
     return res.status(200).json(response);

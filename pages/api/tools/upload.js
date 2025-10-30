@@ -4,6 +4,10 @@ import {
 } from "uuid";
 import crypto from "crypto";
 import {
+  createCipheriv,
+  createHash
+} from "crypto";
+import {
   FormData,
   Blob
 } from "formdata-node";
@@ -17,6 +21,8 @@ import ora from "ora";
 import chalk from "chalk";
 import _ from "lodash";
 import multer from "multer";
+import apiConfig from "@/configs/apiConfig";
+const CDN_BASE_URL = `https://${apiConfig.DOMAIN_URL}/re`;
 const referer = "https://krakenfiles.com";
 const uloadUrlRegexStr = /url: "([^"]+)"/;
 const generateSlug = crypto.createHash("md5").update(`${Date.now()}-${uuidv4()}`).digest("hex").substring(0, 8);
@@ -1089,6 +1095,39 @@ const upload = multer({
   },
   storage: multer.memoryStorage()
 });
+
+function padHex(hex, length) {
+  return hex.length >= length ? hex.slice(0, length) : hex + "x".repeat(length - hex.length);
+}
+
+function deriveKeyAndIv(url) {
+  const keyHash = createHash("sha256").update(url).digest("hex");
+  const keyHex = padHex(keyHash, 64);
+  const key = Buffer.from(keyHex, "hex");
+  const ivHash = createHash("sha256").update(url + "IV_SALT_XAI_2025").digest("hex");
+  const ivHex = padHex(ivHash, 32);
+  const iv = Buffer.from(ivHex, "hex");
+  return {
+    key: key,
+    iv: iv
+  };
+}
+
+function encryptUrl(plainUrl) {
+  try {
+    const {
+      key,
+      iv
+    } = deriveKeyAndIv(plainUrl);
+    const cipher = createCipheriv("aes-256-cbc", key, iv);
+    let encrypted = cipher.update(plainUrl, "utf8", "hex");
+    encrypted += cipher.final("hex");
+    return `${iv.toString("hex")}-${encrypted}`;
+  } catch (err) {
+    console.error("Encrypt failed:", err);
+    return null;
+  }
+}
 export default async function handler(req, res) {
   if (!["GET", "POST"].includes(req.method)) {
     return res.status(405).json({
@@ -1192,6 +1231,7 @@ export default async function handler(req, res) {
       console.log(chalk.green(`Unggahan berhasil ke ${host}`));
       return res.status(200).json({
         result: result,
+        redirect: `${CDN_BASE_URL}/${encryptUrl(result)}`,
         fileName: fileName
       });
     } catch (err) {
