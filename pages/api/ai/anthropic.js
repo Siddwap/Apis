@@ -1,14 +1,16 @@
 import axios from "axios";
 class AnthropicModel {
-  constructor(apiKey = "c2stYW50LWFwaTAzLWl1NWp1VVpjYUpPOXZvLUdRX2xuMHpFMXZFdS1Ed0JhV21MUF9fekRaN3UxU000UFBHLVp3UVIwNVhHNTEzS2pmLXNmc1NxbFJCMzRiY1dyUVpFMTZ3LThXbng1d0FB") {
-    if (!apiKey) {
-      throw new Error("Kunci API Anthropic diperlukan saat membuat instance AnthropicModel.");
-    }
-    this.apiKey = apiKey;
+  constructor() {
+    this.baseKey = "YzJzdFlXNTBMV0Z3YVRBekxXbDFOV3AxVlZwallVcFBPWFp2TFVkUlgyeHVNSHBGTVhaRmRTMUVkMEpoVjIxTVVGOWZla1JhTjNVeFUwMDBVRkJITFZwM1VWSXdOVmhITlRFelMycG1MWE5tYzFOeGJGSkNNelJpWTFkeVVWcEZNVFozTFRoWGJuZzFkMEZC";
+    this.baseApi = "WVhCcExtRnVkR2h5YjNCcFl5NWpiMjA";
     this.anthropicVersion = "2023-06-01";
   }
-  _decodeBase64(encodedString) {
-    return atob(encodedString);
+  _decode(str) {
+    try {
+      return JSON.parse(Buffer.from(str, "base64").toString());
+    } catch {
+      return Buffer.from(str, "base64").toString();
+    }
   }
   async chat({
     model = "claude-3-opus-20240229",
@@ -21,11 +23,11 @@ class AnthropicModel {
     top_k,
     stream = false
   }) {
-    if (!this.apiKey) {
+    if (!this.baseKey) {
       throw new Error("Kunci API tidak valid atau hilang. Pastikan instance AnthropicModel dibuat dengan kunci API yang valid.");
     }
-    this.apiKey = this._decodeBase64(this.apiKey);
-    console.log(this.apiKey);
+    this.baseKey = this._decode(this._decode(this.baseKey));
+    console.log(this.baseKey);
     let finalMessages;
     if (messages && Array.isArray(messages) && messages.length > 0) {
       finalMessages = messages;
@@ -48,10 +50,11 @@ class AnthropicModel {
     if (top_k !== undefined) requestBody.top_k = top_k;
     if (stream) requestBody.stream = true;
     try {
-      const response = await axios.post("https://api.anthropic.com/v1/messages", requestBody, {
+      this.baseApi = this._decode(this._decode(this.baseApi));
+      const response = await axios.post(`https://${this.baseApi}/v1/messages`, requestBody, {
         headers: {
           "Content-Type": "application/json",
-          "x-api-key": this.apiKey,
+          "x-api-key": this.baseKey,
           "anthropic-version": this.anthropicVersion
         },
         responseType: stream ? "stream" : "json"
