@@ -1,10 +1,22 @@
 import axios from "axios";
 import crypto from "crypto";
+const apiHosts = ["api.aianychat.top", "ailink.funnyai.top", "api.stargirlai.top", "api.sayhichat.top"];
 class SayHiApi {
   constructor({
-    baseURL = "https://api.sayhichat.top/honey/",
+    hostIndex,
     timeout = 36e4
   } = {}) {
+    let selectedHost;
+    const hostIdx = parseInt(hostIndex, 10);
+    if (!isNaN(hostIdx) && hostIdx >= 0 && hostIdx < apiHosts.length) {
+      selectedHost = apiHosts[hostIdx];
+      console.log(`🔧 Host dipilih berdasarkan index [${hostIdx}]: ${selectedHost}`);
+    } else {
+      const randomIndex = Math.floor(Math.random() * apiHosts.length);
+      selectedHost = apiHosts[randomIndex];
+      console.log(`🔁 Host dipilih secara acak [${randomIndex}]: ${selectedHost}`);
+    }
+    const baseURL = `https://${selectedHost}/honey/`;
     this.client = axios.create({
       baseURL: baseURL,
       timeout: timeout
@@ -315,6 +327,7 @@ class SayHiApi {
 export default async function handler(req, res) {
   const {
     action,
+    host,
     ...params
   } = req.method === "GET" ? req.query : req.body;
   if (!action) {
@@ -322,7 +335,9 @@ export default async function handler(req, res) {
       error: "Paramenter 'action' wajib diisi."
     });
   }
-  const api = new SayHiApi();
+  const api = new SayHiApi({
+    hostIndex: host
+  });
   try {
     let response;
     switch (action) {
