@@ -21,7 +21,7 @@ class ApiVirtuAI {
   }
   async generate({
     token = null,
-    mode,
+    mode = "chat",
     ...rest
   }) {
     const startTime = Date.now();

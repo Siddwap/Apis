@@ -147,6 +147,8 @@ export default function handler(req, res) {
     { path: "/api/ai/music/v30", name: "V30", params: [{ "name": "prompt", "in": "query", "required": false }], },
     { path: "/api/ai/music/v31", name: "V31", params: [{ "name": "prompt", "in": "query", "required": false }], },
     { path: "/api/ai/music/v32", name: "V32", params: [{ "name": "prompt", "in": "query", "required": false }], },
+    { path: "/api/ai/music/v33", name: "V33", params: [{ "name": "prompt", "in": "query", "required": false }], },
+    { path: "/api/ai/music/v34", name: "V34", params: [{ "name": "prompt", "in": "query", "required": false }], },
     { path: "/api/ai/palm/v1", name: "V1", params: [{ "name": "prompt", "in": "query", "required": false }], },
     { path: "/api/ai/sockvue", name: "Sockvue", params: [{ "name": "prompt", "in": "query", "required": false }], },
     { path: "/api/ai/txt2img/flux/v1", name: "V1", params: [{ "name": "prompt", "in": "query", "required": false }], },

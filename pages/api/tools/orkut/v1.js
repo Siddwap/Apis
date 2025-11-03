@@ -71,7 +71,7 @@ class OrkutApi {
           ...form.getHeaders()
         }
       });
-      if (response.data && response.data.status && response.data.result) {
+      if (response.data && response.data.result) {
         return response.data.result;
       } else {
         throw new Error("Struktur respons tidak valid dari layanan unggah.");
