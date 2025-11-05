@@ -6,20 +6,19 @@ class MusicGenerator {
   constructor(options = {}) {
     this.baseUrl = options.baseUrl || "https://dial-api.com/api/applications/ai-song-android/";
     this.jwt = options.jwt || null;
-    this.encoder = new Encoder();
     console.log("Proses: BackendService diinisialisasi.");
   }
   async enc(data) {
     const {
       uuid: jsonUuid
-    } = await this.encoder.enc({
+    } = await Encoder.enc({
       data: data,
       method: "combined"
     });
     return jsonUuid;
   }
   async dec(uuid) {
-    const decryptedJson = await this.encoder.dec({
+    const decryptedJson = await Encoder.dec({
       uuid: uuid,
       method: "combined"
     });

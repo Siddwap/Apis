@@ -2,9 +2,7 @@ import fetch from "node-fetch";
 import crypto from "crypto";
 import Encoder from "@/lib/encoder";
 class InsMelo {
-  constructor({
-    timeout = 12e4
-  } = {}) {
+  constructor() {
     this.config = {
       baseURL: "https://server.insmelo.com",
       endpoints: {
@@ -19,7 +17,7 @@ class InsMelo {
           Accept: "application/json, text/plain, */*",
           "Content-Type": "application/json"
         },
-        timeout: timeout
+        timeout: 12e4
       }
     };
     this.state = {
@@ -28,20 +26,19 @@ class InsMelo {
       userId: null,
       isAuthenticated: false
     };
-    this.encoder = new Encoder();
     this.lastResponse = null;
   }
   async enc(data) {
     const {
       uuid: jsonUuid
-    } = await this.encoder.enc({
+    } = await Encoder.enc({
       data: data,
       method: "combined"
     });
     return jsonUuid;
   }
   async dec(uuid) {
-    const decryptedJson = await this.encoder.dec({
+    const decryptedJson = await Encoder.dec({
       uuid: uuid,
       method: "combined"
     });
