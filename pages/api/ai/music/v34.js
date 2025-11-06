@@ -167,8 +167,8 @@ class InsMelo {
       const task_id = await this.enc(statusPayload);
       console.log(`[GENERATE] task_id dibuat: ${task_id}`);
       return {
-        ...response,
-        task_id: task_id
+        task_id: task_id,
+        ...response.data,
       };
     }
     return response;

@@ -177,7 +177,9 @@ class MusicGenerator {
   }
   async status(params) {
     const {
-      task_id
+      task_id,
+      provider,
+      jwt
     } = params;
     console.log(`[STATUS] Decoding task_id: ${task_id}`);
     const {
